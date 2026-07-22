@@ -21,6 +21,11 @@
 - 📡 **传输层钩子**:`onRequest` / `onResponse` / `onRequestError` / `onResponseError`,支持数组
 - 🔍 **自动响应类型检测**:根据 `Content-Type` 自动判断响应类型(含 SSE 支持)
 - 📤 **上传进度**:跨运行时上传进度跟踪,浏览器用 XHR,Node/Bun/Deno/CF 用 TransformStream
+- 📥 **下载进度**:基于 `TransformStream` 的下载进度跟踪
+- 💾 **请求缓存**:GET 响应缓存,支持 TTL、最大条数、自定义 key
+- 🔀 **请求去重**:自动合并相同在途请求,共享 Promise
+- 🚦 **并发限制**:限制同时在途请求数量,防止浏览器并发瓶颈
+- 📊 **全局 Loading**:自动追踪请求状态,支持慢请求告警
 
 ## 📦 安装
 
@@ -793,6 +798,298 @@ const request = createRequest({
 ```
 
 > 当同时设置了 `adapter` 和 `onUploadProgress` 时,`adapter` 优先,`onUploadProgress` 会被忽略。
+
+### 13. 下载进度跟踪
+
+通过 `onDownloadProgress` 配置项跟踪响应体下载进度。库会将响应体包装为计数的 `TransformStream`,每个 chunk 下载时触发回调。
+
+适用于大文件下载场景,与上传进度对称。
+
+```typescript
+// 单次请求
+await request.get('/large-file', {
+  responseType: 'blob',
+  onDownloadProgress: ({ progress, loaded, total, lengthComputable }) => {
+    if (lengthComputable) {
+      console.log(`下载: ${progress}% (${loaded}/${total} bytes)`);
+    } else {
+      console.log(`已下载 ${loaded} bytes`);
+    }
+  }
+});
+
+// $fetch 也支持
+const blob = await $fetch('/video.mp4', {
+  responseType: 'blob',
+  onDownloadProgress: ({ progress }) => {
+    progressBar.value = progress;
+  }
+});
+```
+
+`onDownloadProgress` 回调接收 `DownloadProgressEvent`(与 `UploadProgressEvent` 结构相同):
+
+| 属性                | 类型      | 说明                                       |
+| ------------------- | --------- | ------------------------------------------ |
+| `loaded`            | `number`  | 已下载字节数                               |
+| `total`             | `number`  | 总字节数(从 `Content-Length` 获取,无则为 0) |
+| `progress`          | `number`  | 下载百分比 0-100(不可计算时为 0)            |
+| `lengthComputable`  | `boolean` | 总大小是否已知                             |
+
+### 14. 请求缓存
+
+通过 `cache` 配置项缓存 GET 响应,避免重复请求。支持 TTL、最大条数、自定义 key 和按方法过滤。
+
+```typescript
+const request = createRequest({
+  baseURL: '/api',
+  cache: {
+    ttl: 30000,              // 缓存 30 秒
+    methods: ['get'],        // 仅缓存 GET(默认)
+    max: 100,                // 最多 100 条(默认),超出淘汰最旧
+    // key: (config) => '...' // 自定义缓存 key
+  }
+}, options);
+
+// 第一次请求:发起网络调用
+const a = await request.get('/user');
+// 30 秒内的第二次请求:直接返回缓存
+const b = await request.get('/user');
+
+// 单次请求跳过缓存
+const c = await request.get('/user', { cache: false });
+```
+
+**缓存管理**:实例上提供 `clearCache()` 和 `deleteCache(key)` 方法手动管理缓存:
+
+```typescript
+// 清除所有缓存
+request.clearCache();
+
+// 删除指定 key 的缓存(默认 key 格式为 "METHOD:url:params")
+request.deleteCache('GET:/api/user:id=1');
+
+// 更新数据后清除缓存,下次请求将重新拉取
+await request.put('/user', newData);
+request.clearCache();
+```
+
+### 15. 请求去重
+
+通过 `dedupe` 配置项合并相同的在途请求。当多个相同的请求同时在途时,只发起一次网络调用,所有调用者共享同一个 Promise。
+
+```typescript
+const request = createRequest({
+  baseURL: '/api',
+  dedupe: true
+}, options);
+
+// 两个并发相同请求 → 只发一次网络调用
+const [a, b] = await Promise.all([
+  request.get('/user'),
+  request.get('/user')
+]);
+console.log(a === b); // true(同一个响应)
+
+// 自定义去重 key
+const request2 = createRequest({
+  baseURL: '/api',
+  dedupe: {
+    key: (config) => `${config.method}:${config.url}`
+  }
+}, options);
+```
+
+> 默认去重 key 为 `method:url:params:data`。请求完成后自动从去重表中移除。
+
+### 16. 并发限制
+
+通过 `concurrency` 配置项限制同时在途的请求数量。超出限制的请求排队等待,防止浏览器并发上限(6 个)导致的性能问题。
+
+```typescript
+const request = createRequest({
+  baseURL: '/api',
+  concurrency: {
+    maxConcurrent: 6   // 最多同时 6 个请求
+  }
+}, options);
+
+// 批量上传 100 个文件,但最多同时上传 6 个
+const files = [...]; // 100 files
+const results = await Promise.all(
+  files.map(file => request.post('/upload', file))
+);
+```
+
+### 17. 全局 Loading 与慢请求追踪
+
+通过 `onGlobalLoadingChange`、`onLoadingChange`、`slowThreshold` 和 `onSlowRequest` 自动追踪请求状态。
+
+```typescript
+const request = createRequest({
+  baseURL: '/api',
+  // 全局 loading:第一个请求开始时 true,最后一个请求结束时 false
+  onGlobalLoadingChange: (loading) => {
+    store.globalLoading = loading;
+  },
+  // 慢请求:超过 10 秒触发告警
+  slowThreshold: 10000,
+  onSlowRequest: ({ url, method, duration }) => {
+    console.warn(`慢请求: ${method} ${url} 已耗时 ${duration}ms`);
+    // 上报监控...
+  }
+}, options);
+
+// 单请求 loading:该请求开始时 true,结束时 false
+await request.post('/save', data, {
+  onLoadingChange: (loading) => {
+    saveBtnLoading.value = loading;
+  }
+});
+```
+
+| 配置项                    | 类型                                       | 说明                                          |
+| ------------------------- | ------------------------------------------ | --------------------------------------------- |
+| `onGlobalLoadingChange`   | `(loading: boolean) => void`               | 全局 loading 状态变化回调(0→1 true,1→0 false) |
+| `onLoadingChange`         | `(loading: boolean) => void`               | 单请求 loading 状态回调(该请求开始 true,结束 false) |
+| `slowThreshold`           | `number`                                   | 慢请求阈值(ms),0 = 不启用(默认)             |
+| `onSlowRequest`           | `(entry: SlowRequestEntry) => void`        | 慢请求回调,含 `url`/`method`/`duration`       |
+
+> **全局 vs 单请求 Loading**:`onGlobalLoadingChange` 在第一个请求开始时触发 `true`,最后一个请求结束时触发 `false`,适合全局 loading 遮罩;`onLoadingChange` 对每个请求独立触发,适合按钮级别的 loading 状态。两者可同时使用。
+
+### 18. 防抖与节流
+
+通过 `debounce` 和 `throttle` 配置项控制请求频率。
+
+**防抖**(`debounce`):延迟请求执行,延迟期间有新请求进入则取消前一个并重新计时。适用于搜索输入。
+
+```typescript
+// 搜索输入防抖 300ms — 用户停止输入 300ms 后才发请求
+searchInput.addEventListener('input', (e) => {
+  request.get('/search', {
+    params: { q: e.target.value },
+    debounce: 300
+  });
+});
+```
+
+**节流**(`throttle`):固定间隔内只允许一次请求,额外请求被拒绝(`ERR_THROTTLED`)。适用于按钮防重复点击。
+
+```typescript
+// 提交按钮节流 1 秒 — 1 秒内多次点击只发一次
+submitButton.addEventListener('click', () => {
+  request.post('/submit', formData, {
+    throttle: 1000
+  }).catch(err => {
+    if (err.code === 'ERR_THROTTLED') return; // 忽略节流拒绝
+    throw err;
+  });
+});
+```
+
+> 防抖和节流的 key 默认为 `method:url:params:data`,相同 key 的请求才会互相影响。
+
+### 19. Auth 管理
+
+通过 `auth` 配置项自动附加 Token 和处理 Token 刷新。
+
+```typescript
+const request = createRequest({
+  baseURL: '/api',
+  auth: {
+    // 自动附加 Authorization: Bearer <token>
+    getToken: () => localStorage.getItem('token'),
+
+    // 刷新 token,返回新 token
+    refreshToken: async () => {
+      const res = await fetch('/auth/refresh', {
+        headers: { 'refresh-token': localStorage.getItem('refreshToken') }
+      });
+      const { token } = await res.json();
+      localStorage.setItem('token', token);
+      return token;
+    },
+
+    // 何时触发刷新 —— 默认 401,可自定义状态码或判断函数
+    // refreshOn: 403,                        // 403 时刷新
+    refreshOn: (status, response) => {        // 自定义判断
+      return status === 401 || response.headers.get('x-token-expired') === '1';
+    },
+
+    // 刷新失败时调用(如跳转登录页)
+    onUnauthorized: () => {
+      router.push('/login');
+    }
+  }
+}, options);
+```
+
+| 属性            | 类型                                                         | 说明                              |
+| --------------- | ------------------------------------------------------------ | --------------------------------- |
+| `getToken`      | `() => string \| Promise<string>`                            | 获取当前 token,自动附加到请求头   |
+| `refreshToken`  | `() => Promise<string>`                                      | 刷新 token,返回新 token          |
+| `refreshOn`     | `number \| (status, response) => boolean`                    | 触发刷新的条件,默认 `401`        |
+| `onUnauthorized`| `() => void`                                                 | 刷新失败或无 `refreshToken` 时调用 |
+
+**并发刷新去重**:多个请求同时触发刷新时,只调用一次 `refreshToken`,所有请求共享同一个刷新 Promise,刷新成功后全部自动重试。
+
+### 20. 响应 Schema 验证
+
+通过 `schema` 配置项在运行时验证响应数据结构,兼容 Zod,也支持普通验证函数。
+
+```typescript
+import { z } from 'zod';
+
+// 使用 Zod Schema
+const UserSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  email: z.string().email()
+});
+
+const user = await request.get('/user', { schema: UserSchema });
+// user 已通过运行时验证,类型安全
+
+// 使用普通验证函数
+const user2 = await request.get('/user', {
+  schema: (data) => {
+    if (!data.id) throw new Error('Missing id');
+    return data;
+  }
+});
+```
+
+验证失败时抛出异常(如 Zod 的 `ZodError`),可通过 `onError` 统一处理。
+
+### 21. 请求/响应数据转换
+
+通过 `transformRequest` 和 `transformResponse` 全局转换数据格式,如 camelCase ↔ snake_case。
+
+```typescript
+import { camelCase, snakeCase } from 'lodash';
+
+const request = createRequest({
+  baseURL: '/api',
+  // 发送前:camelCase → snake_case
+  transformRequest: (data) => {
+    if (typeof data !== 'object' || data === null) return data;
+    return Object.fromEntries(
+      Object.entries(data).map(([k, v]) => [snakeCase(k), v])
+    );
+  },
+  // 接收后:snake_case → camelCase
+  transformResponse: (data) => {
+    if (typeof data !== 'object' || data === null) return data;
+    return Object.fromEntries(
+      Object.entries(data).map(([k, v]) => [camelCase(k), v])
+    );
+  }
+}, options);
+
+// 请求发送 { user_name: 'test' } (而非 { userName: 'test' })
+// 响应自动转为 { userName: 'test' } (而非 { user_name: 'test' })
+await request.post('/user', { userName: 'test' });
+```
 
 ## 🛠️ 实用工具
 

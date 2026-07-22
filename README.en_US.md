@@ -21,6 +21,11 @@ A lightweight, type-safe HTTP request library built on the native Fetch API, wit
 - 📡 **Transport Hooks**: `onRequest` / `onResponse` / `onRequestError` / `onResponseError`, array support
 - 🔍 **Auto Response Type Detection**: Auto-detect response type from `Content-Type` (incl. SSE)
 - 📤 **Upload Progress**: Cross-runtime upload progress tracking — XHR in browsers, TransformStream in Node/Bun/Deno/CF
+- 📥 **Download Progress**: TransformStream-based download progress tracking
+- 💾 **Request Cache**: GET response caching with TTL, max entries, custom keys
+- 🔀 **Request Dedupe**: Auto-merge identical in-flight requests, shared Promise
+- 🚦 **Concurrency Limit**: Limit simultaneous in-flight requests to prevent browser bottleneck
+- 📊 **Global Loading**: Auto-track request state with slow request alerts
 
 ## 📦 Installation
 
@@ -805,6 +810,164 @@ const request = createRequest({
 ```
 
 > When both `adapter` and `onUploadProgress` are set, `adapter` takes precedence and `onUploadProgress` is ignored.
+
+### 13. Download Progress Tracking
+
+Track download progress via the `onDownloadProgress` config option. The library wraps the response body in a counting `TransformStream`, triggering the callback for each chunk downloaded.
+
+Ideal for large file downloads — symmetric with upload progress.
+
+```typescript
+// Per-request
+await request.get('/large-file', {
+  responseType: 'blob',
+  onDownloadProgress: ({ progress, loaded, total, lengthComputable }) => {
+    if (lengthComputable) {
+      console.log(`Download: ${progress}% (${loaded}/${total} bytes)`);
+    } else {
+      console.log(`Downloaded ${loaded} bytes`);
+    }
+  }
+});
+
+// $fetch also supported
+const blob = await $fetch('/video.mp4', {
+  responseType: 'blob',
+  onDownloadProgress: ({ progress }) => {
+    progressBar.value = progress;
+  }
+});
+```
+
+The `onDownloadProgress` callback receives a `DownloadProgressEvent` (same shape as `UploadProgressEvent`):
+
+| Property            | Type      | Description                                              |
+| ------------------- | --------- | ------------------------------------------------------- |
+| `loaded`            | `number`  | Bytes downloaded so far                                 |
+| `total`             | `number`  | Total bytes (from `Content-Length`, 0 if unavailable)   |
+| `progress`          | `number`  | Download percentage 0-100 (0 if not computable)          |
+| `lengthComputable`  | `boolean` | Whether total size is known                             |
+
+### 14. Request Cache
+
+Cache GET responses via the `cache` config option to avoid redundant requests. Supports TTL, max entries, custom keys, and method filtering.
+
+```typescript
+const request = createRequest({
+  baseURL: '/api',
+  cache: {
+    ttl: 30000,              // cache for 30 seconds
+    methods: ['get'],        // cache GET only (default)
+    max: 100,                // max 100 entries (default), evicts oldest
+    // key: (config) => '...' // custom cache key
+  }
+}, options);
+
+// First request: makes a network call
+const a = await request.get('/user');
+// Second request within 30s: returns cached response
+const b = await request.get('/user');
+
+// Skip cache for a specific request
+const c = await request.get('/user', { cache: false });
+```
+
+**Cache management**: the instance provides `clearCache()` and `deleteCache(key)` methods for manual cache management:
+
+```typescript
+// Clear all cached responses
+request.clearCache();
+
+// Delete a specific cache entry by key (default key format: "METHOD:url:params")
+request.deleteCache('GET:/api/user:id=1');
+
+// Clear cache after updating data — next request will re-fetch
+await request.put('/user', newData);
+request.clearCache();
+```
+
+### 15. Request Dedupe
+
+Merge identical in-flight requests via the `dedupe` config option. When multiple identical requests are in flight simultaneously, only one network call is made — all callers share the same Promise.
+
+```typescript
+const request = createRequest({
+  baseURL: '/api',
+  dedupe: true
+}, options);
+
+// Two concurrent identical requests → one network call
+const [a, b] = await Promise.all([
+  request.get('/user'),
+  request.get('/user')
+]);
+console.log(a === b); // true (same response)
+
+// Custom dedupe key
+const request2 = createRequest({
+  baseURL: '/api',
+  dedupe: {
+    key: (config) => `${config.method}:${config.url}`
+  }
+}, options);
+```
+
+> Default dedupe key is `method:url:params:data`. Entries are automatically removed from the dedupe map when the request settles.
+
+### 16. Concurrency Limit
+
+Limit simultaneous in-flight requests via the `concurrency` config option. Excess requests are queued, preventing browser concurrency limits (6 connections) from causing performance issues.
+
+```typescript
+const request = createRequest({
+  baseURL: '/api',
+  concurrency: {
+    maxConcurrent: 6   // max 6 simultaneous requests
+  }
+}, options);
+
+// Upload 100 files, but at most 6 at a time
+const files = [...]; // 100 files
+const results = await Promise.all(
+  files.map(file => request.post('/upload', file))
+);
+```
+
+### 17. Global Loading & Slow Request Tracking
+
+Automatically track request state via `onGlobalLoadingChange`, `onLoadingChange`, `slowThreshold`, and `onSlowRequest`.
+
+```typescript
+const request = createRequest({
+  baseURL: '/api',
+  // Global loading: true when first request starts, false when last finishes
+  onGlobalLoadingChange: (loading) => {
+    store.globalLoading = loading;
+  },
+  // Slow request: alert after 10 seconds
+  slowThreshold: 10000,
+  onSlowRequest: ({ url, method, duration }) => {
+    console.warn(`Slow request: ${method} ${url} took ${duration}ms`);
+    // Report to monitoring...
+  }
+}, options);
+
+// Per-request loading: true when this request starts, false when it finishes
+await request.post('/save', data, {
+  onLoadingChange: (loading) => {
+    saveBtnLoading.value = loading;
+  }
+});
+```
+
+| Option                    | Type                                       | Description                                          |
+| ------------------------- | ------------------------------------------ | ---------------------------------------------------- |
+| `onGlobalLoadingChange`   | `(loading: boolean) => void`               | Global loading state callback (0→1 true, 1→0 false)  |
+| `onLoadingChange`         | `(loading: boolean) => void`               | Per-request loading callback (starts true, ends false) |
+| `slowThreshold`           | `number`                                   | Slow request threshold (ms), 0 = disabled            |
+| `onSlowRequest`           | `(entry: SlowRequestEntry) => void`        | Slow request callback with `url`/`method`/`duration` |
+
+> **Global vs Per-request Loading**: `onGlobalLoadingChange` fires `true` when the first request starts and `false` when the last finishes — ideal for global loading overlays. `onLoadingChange` fires independently for each request — ideal for button-level loading states. Both can be used simultaneously.
 
 ## 🛠️ Utilities
 
