@@ -1,0 +1,1002 @@
+# @soybeanjs/fetch
+
+[English](./README.en_US.md) | 简体中文
+
+一个基于原生 Fetch 封装的轻量级、类型安全的 HTTP 请求库,零运行时依赖,提供优雅的 API 设计和强大的功能支持。
+
+## ✨ 特性
+
+- 🎯 **类型安全**:完整的 TypeScript 类型支持,智能类型推导
+- 🚀 **零依赖**:基于原生 `fetch`,无 axios 等运行时依赖
+- 🔄 **双实例模式**:支持标准请求实例和扁平化响应实例
+- 📦 **文件下载**:自动解析文件名和内容类型,支持多种文件格式
+- 🎣 **生命周期钩子**:提供完整的请求生命周期管理(传输层 + 业务层)
+- 🔁 **自动重试**:内置重试机制,支持自定义重试条件和延迟
+- ⏱️ **超时控制**:基于 `AbortController`,可区分超时和用户取消
+- 🛡️ **错误处理**:统一的错误处理机制,支持业务错误和网络错误
+- 📝 **响应转换**:灵活的响应数据转换功能
+- 🎨 **状态管理**:内置状态管理,可在实例间共享数据
+- 🔌 **适配器 API**:可插拔的传输层,支持 uniapp、微信小程序等平台
+- 🌐 **$fetch API**:兼容 ofetch 的轻量 fetch 客户端
+- 📡 **传输层钩子**:`onRequest` / `onResponse` / `onRequestError` / `onResponseError`,支持数组
+- 🔍 **自动响应类型检测**:根据 `Content-Type` 自动判断响应类型(含 SSE 支持)
+
+## 📦 安装
+
+```bash
+# npm
+npm install @soybeanjs/fetch
+
+# yarn
+yarn add @soybeanjs/fetch
+
+# pnpm
+pnpm add @soybeanjs/fetch
+```
+
+> **环境要求**:Node.js 18+ 或现代浏览器(需原生 `fetch` 支持)。
+
+## 🚀 快速开始
+
+### 基础使用
+
+```typescript
+import { createRequest } from '@soybeanjs/fetch';
+import type { FetchResponse } from '@soybeanjs/fetch';
+
+interface ApiResponse<T = any> {
+  code: number;
+  data: T;
+  message: string;
+}
+
+// 创建请求实例
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    timeout: 10000
+  },
+  {
+    // 转换响应数据
+    // !!!注意这里一定要给 response 指定类型,这样才能有类型推导
+    transform: (response: FetchResponse<ApiResponse>) => {
+      return response.data.data;
+    },
+    // 请求前拦截
+    onRequest: async config => {
+      // 添加 token(headers 是原生 Headers 实例,使用 .set())
+      config.headers.set('Authorization', `Bearer ${getToken()}`);
+      return config;
+    },
+    // 判断后端业务是否成功
+    isBackendSuccess: response => {
+      return response.data.code === 200;
+    },
+    // 后端业务失败处理
+    onBackendFail: async (response, instance) => {
+      // 处理 token 过期等情况
+      if (response.data.code === 401) {
+        await refreshToken();
+        // 重新发起请求(走完整管道)
+        return instance(response.config);
+      }
+    },
+    // 错误处理
+    onError: async error => {
+      console.error('Request failed:', error.message);
+    }
+  }
+);
+
+// 发起请求
+const data = await request({
+  url: '/users',
+  method: 'GET'
+});
+```
+
+### 扁平化响应实例
+
+不抛出异常,通过返回值判断成功或失败:
+
+```typescript
+import { createFlatRequest } from '@soybeanjs/fetch';
+
+const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, options);
+
+const { data, error, response } = await flatRequest({
+  url: '/users',
+  method: 'GET'
+});
+
+if (error) {
+  console.error('Request failed:', error);
+} else {
+  console.log('Success:', data);
+}
+```
+
+### $fetch — 轻量 fetch 客户端(兼容 ofetch)
+
+无需业务逻辑,直接发起请求:
+
+```typescript
+import { $fetch } from '@soybeanjs/fetch';
+
+// GET 请求
+const user = await $fetch<User>('/api/users/1');
+
+// POST 请求
+const created = await $fetch<User>('/api/users', {
+  method: 'POST',
+  data: { name: 'John' }
+});
+
+// 创建带默认值的实例
+const apiFetch = $fetch.create({
+  baseURL: 'https://api.example.com',
+  headers: { Authorization: 'Bearer xxx' },
+  retry: { retries: 3 }
+});
+
+// 获取完整响应(不抛异常)
+const response = await $fetch.raw('/api/users/1');
+console.log(response.status, response.data);
+
+// 直接访问原生 fetch
+$fetch.native('https://example.com');
+```
+
+## 📖 核心概念
+
+### RequestOption 配置项
+
+| 配置项             | 类型       | 必填 | 说明                                                                                   |
+| ------------------ | ---------- | ---- | -------------------------------------------------------------------------------------- |
+| `transform`        | `Function` | 是   | 转换响应数据为业务数据                                                                 |
+| `onRequest`        | `Function` | 否   | 请求前拦截器(业务层,返回值模式),可添加 token 等                                        |
+| `isBackendSuccess` | `Function` | 是   | 判断后端业务逻辑是否成功                                                               |
+| `onBackendFail`    | `Function` | 否   | 后端业务失败回调,如处理 token 过期。返回新 `FetchResponse` 可触发重试,新响应会再次校验 |
+| `onError`          | `Function` | 否   | 请求错误处理,如显示错误提示                                                            |
+| `defaultState`     | `Object`   | 否   | 默认状态对象                                                                           |
+| `backendErrorMsg`  | `string`   | 否   | 后端错误消息,用于构造 [`BackendError`](#错误判别)                                      |
+
+> 业务错误会以 `BackendError` 实例(继承自 `FetchError`,`error.code === 'BACKEND_ERROR'`)形式抛出,
+> 可通过 `instanceof BackendError` 或 `error.code === BACKEND_ERROR_FLAG` 判别,详见 [错误判别](#错误判别)。
+
+### 传输层钩子(对标 ofetch)
+
+除了业务层钩子(`RequestOption`),`FetchRequestConfig` 还支持传输层钩子,支持**单个函数或数组**:
+
+```typescript
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    // 传输层钩子(每个请求也可单独设置)
+    onRequest: [
+      ({ request, options }) => {
+        console.log('→', request);
+      }
+    ],
+    onResponse: [
+      ({ response }) => {
+        console.log('←', response.status);
+      }
+    ],
+    onRequestError: [
+      ({ error }) => {
+        console.error('Request error:', error.message);
+      }
+    ],
+    onResponseError: [
+      ({ response, error }) => {
+        console.error('Response error:', response.status);
+      }
+    ]
+  },
+  options
+);
+```
+
+| 钩子              | 触发时机                | 参数                           |
+| ----------------- | ----------------------- | ------------------------------ |
+| `onRequest`       | 请求发送前              | `FetchContext`                 |
+| `onRequestError`  | 请求失败(网络错误/超时) | `FetchContext` (含 `error`)    |
+| `onResponse`      | 响应接收并解析后        | `FetchContext` (含 `response`) |
+| `onResponseError` | 响应状态码错误(4xx/5xx) | `FetchContext` (含 `error`)    |
+
+> **与业务层钩子的区别**: 传输层钩子在 `FetchRequestConfig` 中配置,支持数组和 `FetchContext` 模式;业务层钩子在 `RequestOption` 中配置,单个函数,返回值模式。传输层钩子先于业务层执行。
+
+### 错误判别
+
+业务错误(由 `isBackendSuccess` 判定为失败)会构造为 `BackendError` 实例:
+
+```typescript
+import { FetchError, BackendError, BACKEND_ERROR_FLAG } from '@soybeanjs/fetch';
+
+try {
+  await request({ url: '/users/1' });
+} catch (error) {
+  if (error instanceof BackendError) {
+    // 业务错误,例如 code !== 200
+    console.error('业务错误:', error.message);
+  } else if (error instanceof FetchError) {
+    // 网络 / HTTP 错误
+    console.error('网络错误:', error.message);
+  }
+}
+
+// 或通过 code 判别(等价于 instanceof BackendError)
+if (fetchError.code === BACKEND_ERROR_FLAG) {
+  // ...
+}
+```
+
+`FetchError` 提供以下便捷属性:
+
+| 属性         | 说明                                |
+| ------------ | ----------------------------------- |
+| `status`     | HTTP 状态码(别名 `statusCode`)      |
+| `statusText` | HTTP 状态文本(别名 `statusMessage`) |
+| `data`       | 响应数据                            |
+| `code`       | 错误码                              |
+| `response`   | 完整 `FetchResponse`                |
+| `config`     | 请求配置                            |
+
+### 请求处理流程
+
+```
+用户发起请求
+    ↓
+传输层 onRequest 钩子(FetchContext 模式)
+    ↓
+业务层 onRequest 钩子(返回值模式)
+    ↓
+发送 HTTP 请求(adapter)
+    ↓
+├─ 网络错误 → 传输层 onRequestError → retry → onError
+    ↓
+接收响应 → 解析响应体(auto 自动检测类型)
+    ↓
+传输层 onResponse 钩子
+    ↓
+validateStatus 检查
+    ├─ 错误状态码 → 传输层 onResponseError → retry → onError
+    ↓
+processResponse(业务逻辑)
+    ├─ coerceBinaryToJsonResponse(二进制转 JSON)
+    ├─ isBackendSuccess 校验
+    │   ├─ 成功 → transform → 返回业务数据
+    │   └─ 失败 → onBackendFail → BackendError → onError
+    ├─ 文件类型 → 返回文件信息对象
+    └─ 其他 → 返回原始数据
+```
+
+## 🎯 高级功能
+
+### 1. 文件下载
+
+支持自动解析文件名和内容类型:
+
+```typescript
+// 下载文件
+const fileData = await request({
+  url: '/download/report.pdf',
+  method: 'GET',
+  responseType: 'blob'
+});
+
+// fileData 包含:
+// {
+//   file: Blob,
+//   filename: 'report.pdf',
+//   contentType: 'application/pdf'
+// }
+
+// 自定义文件名解析
+const fileData = await request({
+  url: '/download/file',
+  responseType: 'blob',
+  getFileName: response => {
+    // 自定义解析逻辑
+    return 'custom-filename.pdf';
+  }
+});
+
+// 使用内置的 downloadFile 工具函数触发浏览器下载
+import { downloadFile } from '@soybeanjs/fetch';
+
+downloadFile(fileData.file, fileData.filename);
+```
+
+支持的文件类型:
+
+- `blob` → `FileResponseData<Blob>`
+- `arraybuffer` → `FileResponseData<ArrayBuffer>`
+- `stream` → `FileResponseData<ReadableStream<Uint8Array>>`
+
+### 2. 响应类型支持
+
+```typescript
+// JSON(默认),需要添加一个泛型参数指定业务数据类型,其他类型无需指定
+interface UserData {
+  id: number;
+  name: string;
+}
+const data = await request<UserData>({
+  url: '/users/123'
+});
+
+// auto — 根据 Content-Type 自动检测(推荐用于 $fetch)
+const data = await $fetch('/api/data', { responseType: 'auto' });
+
+// 文本
+const text = await request({
+  url: '/data.csv',
+  responseType: 'text'
+});
+
+// HTML/XML 文档(使用 DOMParser)
+const doc = await request({
+  url: '/template.html',
+  responseType: 'document'
+});
+
+// Blob(文件)
+const file = await request({
+  url: '/download/image.png',
+  responseType: 'blob'
+});
+
+// ArrayBuffer
+const buffer = await request({
+  url: '/download/data.bin',
+  responseType: 'arraybuffer'
+});
+
+// Stream(SSE / 大文件流)
+const stream = await request({
+  url: '/events',
+  responseType: 'stream'
+});
+```
+
+支持的响应类型:
+
+| 类型          | 说明                                       |
+| ------------- | ------------------------------------------ |
+| `json`        | JSON(默认)                                 |
+| `auto`        | 根据 `Content-Type` 自动检测               |
+| `text`        | 文本                                       |
+| `blob`        | Blob 文件                                  |
+| `arraybuffer` | ArrayBuffer                                |
+| `stream`      | ReadableStream(含 SSE `text/event-stream`) |
+| `document`    | HTML/XML 文档(DOMParser,浏览器环境)        |
+
+### 3. 状态管理
+
+在请求实例中共享状态:
+
+```typescript
+interface CustomState {
+  token: string;
+  userId: number;
+}
+
+const request = createRequest(
+  { baseURL: 'https://api.example.com' },
+  {
+    defaultState: {
+      token: '',
+      userId: 0
+    } as CustomState
+    // ...其他配置
+  }
+);
+
+// 访问和修改状态
+request.state.token = 'new-token';
+request.state.userId = 123;
+
+// 在钩子中使用状态
+onRequest: config => {
+  config.headers.set('Authorization', `Bearer ${request.state.token}`);
+  return config;
+};
+```
+
+### 4. 自动重试
+
+内置重试机制,无需额外依赖:
+
+```typescript
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    retry: {
+      retries: 3,
+      retryDelay: retryCount => retryCount * 1000,
+      retryCondition: error => {
+        // 仅在网络错误或 5xx 错误时重试
+        return !error.response || error.response.status >= 500;
+      }
+    }
+  },
+  options
+);
+```
+
+| 配置项           | 类型                                     | 默认值              | 说明           |
+| ---------------- | ---------------------------------------- | ------------------- | -------------- |
+| `retries`        | `number`                                 | `0`                 | 重试次数       |
+| `retryDelay`     | `(count, error) => number`               | 线性退避            | 重试延迟(毫秒) |
+| `retryCondition` | `(error) => boolean \| Promise<boolean>` | 网络错误+重试状态码 | 重试条件       |
+
+默认重试状态码: `408, 409, 425, 429, 500, 502, 503, 504`
+
+> 用户主动取消(非超时)不会触发重试。
+
+### 5. 超时控制
+
+基于 `AbortController` 实现,可区分超时和用户取消:
+
+```typescript
+const request = createRequest({ timeout: 10000 }, options);
+
+// 超时会抛出 FetchError,code 为 'ERR_TIMEOUT'
+// 错误消息格式: [GET] "https://...": Request timeout of 10000ms exceeded
+
+// 用户主动取消(不会重试)
+const controller = new AbortController();
+const promise = request({
+  url: '/users',
+  signal: controller.signal
+});
+
+// 取消请求
+controller.abort();
+```
+
+### 6. 类型推导
+
+完整的 TypeScript 类型支持:
+
+```typescript
+interface User {
+  id: number;
+  name: string;
+}
+
+interface ApiResponse<T = any> {
+  code: number;
+  data: T;
+  message: string;
+}
+
+// ResponseData:后端原始响应类型
+// ApiData:业务数据类型
+const request = createRequest(
+  { baseURL: 'https://api.example.com' },
+  {
+    transform: (response: FetchResponse<ApiResponse>) => response.data.data
+  }
+);
+
+// 类型推导:data 的类型是 ApiResponse<User>
+const user = await request<User>({
+  url: '/users/123'
+});
+```
+
+### 7. raw 方法 — 获取原始响应
+
+通过 `request.raw()` 可以跳过 `transform` 转换,直接获取完整的 `FetchResponse` 对象。
+
+**与普通 `request()` 的区别:**
+
+| 方法            | 返回值                      | 是否经过 transform |
+| --------------- | --------------------------- | ------------------ |
+| `request()`     | 转换后的业务数据            | ✅ 是              |
+| `request.raw()` | 完整的 `FetchResponse` 对象 | ❌ 否              |
+
+```typescript
+// 1. 获取响应头中的自定义信息
+const response = await request.raw<User[]>({
+  url: '/users',
+  method: 'GET'
+});
+
+const totalCount = response.headers.get('x-total-count');
+const requestId = response.headers.get('x-request-id');
+const statusCode = response.status;
+
+// 2. 文件下载时获取原始响应 + 文件信息
+const fileResponse = await request.raw({
+  url: '/download/report.pdf',
+  responseType: 'blob'
+});
+
+// fileResponse.data 包含 { file, filename, contentType }
+```
+
+> `createFlatRequest` 创建的扁平化实例同样提供 `flatRequest.raw()` 方法,语义一致,但不抛异常。
+
+### 8. 便捷 HTTP 方法
+
+`RequestInstance` 和 `FlatRequestInstance` 都提供了常用 HTTP 动词的快捷方法:
+
+```typescript
+// GET 请求
+const users = await request.get<User[]>('/users');
+const usersWithQuery = await request.get<User[]>('/users', {
+  params: { page: 1, pageSize: 10 }
+});
+
+// POST 请求
+const newUser = await request.post<User>('/users', {
+  name: '张三',
+  email: 'zhangsan@example.com'
+});
+
+// PUT 请求
+const updatedUser = await request.put<User>('/users/123', {
+  name: '张三(已更新)'
+});
+
+// PATCH 请求
+const patchedUser = await request.patch<User>('/users/123', {
+  email: 'newemail@example.com'
+});
+
+// DELETE 请求
+await request.delete('/users/123');
+```
+
+### 9. 适配器 API — 跨平台支持
+
+通过自定义适配器,可在 uniapp、微信小程序等非标准 fetch 环境中运行:
+
+```typescript
+import { createRequest, createAdapterResponse } from '@soybeanjs/fetch';
+
+// uniapp 适配器示例
+const uniappAdapter = async (url, init) => {
+  const res = await uni.request({
+    url,
+    method: init.method as any,
+    header: Object.fromEntries(init.headers.entries()),
+    data: init.body,
+    responseType: 'arraybuffer'
+  });
+
+  return createAdapterResponse({
+    status: res.statusCode,
+    statusText: '',
+    headers: new Headers(res.header),
+    body: res.data instanceof ArrayBuffer ? res.data : new ArrayBuffer(0)
+  });
+};
+
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    adapter: uniappAdapter
+  },
+  options
+);
+```
+
+### 10. ignoreResponseError — 忽略响应错误
+
+当 `ignoreResponseError` 为 `true` 时,跳过 `validateStatus` 检查,返回响应而非抛出异常:
+
+```typescript
+const response = await $fetch.raw('/api/users/404', {
+  ignoreResponseError: true
+});
+
+// 即使是 404 也会返回 response,不会抛出 FetchError
+console.log(response.status); // 404
+console.log(response.data); // 错误页面数据
+```
+
+### 11. 类型安全客户端 (Typed Client / OpenAPI)
+
+通过 [openapi-typescript](https://openapi-ts.dev/) 生成 `paths` 类型后,可创建**全类型安全**的请求客户端。
+
+> **前置步骤**:使用 `openapi-typescript` 将 `openapi.json` 生成类型文件:
+>
+> ```bash
+> npx openapi-typescript ./openapi.json -o ./src/openapi.d.ts
+> ```
+
+#### createTypedClient
+
+```typescript
+import { createRequest, createTypedClient } from '@soybeanjs/fetch';
+import type { paths } from './openapi.d.ts';
+
+const request = createRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
+
+// Field = 'data' 用于解包 envelope 结构
+const client = createTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
+
+// 路径、参数、请求体、返回值均有类型推导
+const menus = await client.get('/menu/list', {
+  params: { query: { page: 1, pageSize: 10 } }
+});
+
+// POST 请求
+const loginResult = await client.post('/auth/login', {
+  body: { username: 'admin', password: '123456' }
+});
+
+// raw 方法 — 跳过 transform,返回完整 FetchResponse
+const response = await client.raw.get('/menu/list', {
+  params: { query: { page: 1 } }
+});
+```
+
+#### createFlatTypedClient
+
+包装 `createFlatRequest` 创建的扁平化实例,**不抛出异常**:
+
+```typescript
+import { createFlatRequest, createFlatTypedClient } from '@soybeanjs/fetch';
+
+const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
+
+const client = createFlatTypedClient<paths, '/api/v1', 'data'>(flatRequest, '/api/v1');
+
+const { data, error } = await client.get('/menu/list', {
+  params: { query: { page: 1 } }
+});
+
+if (error) {
+  console.error('请求失败:', error.message);
+} else {
+  console.log('菜单:', data);
+}
+```
+
+## 🛠️ 实用工具
+
+### parseContentDisposition
+
+解析 `Content-Disposition` 响应头获取文件名:
+
+```typescript
+import { parseContentDisposition } from '@soybeanjs/fetch';
+
+const filename = parseContentDisposition("attachment; filename*=UTF-8''%E6%96%87%E4%BB%B6.pdf");
+// '文件.pdf'
+```
+
+### downloadFile
+
+在浏览器中触发文件下载:
+
+```typescript
+import { downloadFile } from '@soybeanjs/fetch';
+
+downloadFile(blob, 'report.pdf');
+```
+
+### createFetch / $fetch
+
+创建 ofetch 兼容的轻量 fetch 客户端:
+
+```typescript
+import { $fetch, createFetch } from '@soybeanjs/fetch';
+
+// 使用默认实例
+const data = await $fetch('/api/users/1');
+
+// 创建自定义实例
+const apiFetch = createFetch({
+  baseURL: 'https://api.example.com',
+  retry: { retries: 3 },
+  onRequest: [({ request }) => console.log('→', request)]
+});
+
+// 链式创建
+const authFetch = apiFetch.create({
+  headers: { Authorization: 'Bearer xxx' }
+});
+```
+
+### createAdapterResponse
+
+帮助适配器作者构造 `FetchAdapterResponse`:
+
+```typescript
+import { createAdapterResponse } from '@soybeanjs/fetch';
+
+const response = createAdapterResponse({
+  status: 200,
+  statusText: 'OK',
+  headers: new Headers({ 'content-type': 'application/json' }),
+  body: responseBody
+});
+```
+
+## 📝 完整示例
+
+### 带认证的 API 请求
+
+```typescript
+import { createRequest } from '@soybeanjs/fetch';
+import type { FetchResponse } from '@soybeanjs/fetch';
+
+interface ApiResponse<T = any> {
+  code: number;
+  data: T;
+  message: string;
+}
+
+interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    timeout: 10000
+  },
+  {
+    transform: (response: FetchResponse<ApiResponse>) => {
+      return response.data.data;
+    },
+    onRequest: async config => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.set('Authorization', `Bearer ${token}`);
+      }
+      return config;
+    },
+    isBackendSuccess: response => {
+      return response.data.code === 200;
+    },
+    onBackendFail: async (response, instance) => {
+      const { code } = response.data;
+
+      // Token 过期,刷新后重试
+      if (code === 401) {
+        const newToken = await refreshToken();
+        localStorage.setItem('token', newToken);
+        response.config.headers.set('Authorization', `Bearer ${newToken}`);
+        return instance(response.config);
+      }
+    },
+    onError: async error => {
+      console.error(error.message);
+    }
+  }
+);
+
+// 1. 获取用户信息
+async function getUser(id: number) {
+  const user = await request<User>({ url: `/users/${id}` });
+  return user;
+}
+
+// 2. 创建用户
+async function createUser(data: Partial<User>) {
+  const user = await request.post<User>('/users', data);
+  return user;
+}
+
+// 3. 下载文件
+async function downloadReport(reportId: string) {
+  const fileData = await request.get('/download/report.pdf', {
+    responseType: 'blob'
+  });
+
+  const url = URL.createObjectURL(fileData.file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileData.filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// 4. 上传文件
+async function uploadFile(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return await request.post('/upload', formData);
+}
+```
+
+## 🔧 API 参考
+
+### createRequest
+
+创建标准请求实例。
+
+```typescript
+function createRequest<ResponseData, ApiData, State>(
+  config?: FetchRequestConfig,
+  options?: RequestOption<ResponseData, ApiData, State>
+): RequestInstance<ApiData, State>;
+```
+
+### createFlatRequest
+
+创建扁平化请求实例,不抛出异常。
+
+```typescript
+function createFlatRequest<ResponseData, ApiData, State>(
+  config?: FetchRequestConfig,
+  options?: RequestOption<ResponseData, ApiData, State>
+): FlatRequestInstance<ResponseData, ApiData, State>;
+```
+
+### createFetch / $fetch
+
+创建 ofetch 兼容的轻量 fetch 客户端。
+
+```typescript
+function createFetch(defaults?: FetchRequestConfig): $Fetch;
+
+interface $Fetch {
+  <T = any, R extends ResponseType = 'json'>(
+    request: string,
+    options?: FetchRequestConfig<R>
+  ): Promise<MappedType<R, T>>;
+  raw<T = any, R extends ResponseType = 'json'>(
+    request: string,
+    options?: FetchRequestConfig<R>
+  ): Promise<FetchResponse<MappedType<R, T>>>;
+  native: typeof fetch;
+  create(defaults: FetchRequestConfig): $Fetch;
+}
+```
+
+### createTypedClient
+
+基于 openapi-typescript 生成的 `paths` 类型创建类型安全的客户端。
+
+```typescript
+function createTypedClient<Paths, Prefix = '', Field = ''>(
+  requestInstance: RequestInstance<any, any>,
+  prefix?: Prefix
+): TypedClient<Paths, Prefix, Field>;
+```
+
+### createFlatTypedClient
+
+创建类型安全的扁平化客户端,不抛出异常。
+
+```typescript
+function createFlatTypedClient<Paths, Prefix = '', Field = ''>(
+  flatRequestInstance: FlatRequestInstance<any, any, any>,
+  prefix?: Prefix
+): FlatTypedClient<Paths, Prefix, Field>;
+```
+
+### 类型定义
+
+```typescript
+// 响应
+interface FetchResponse<T = any> {
+  data: T;
+  status: number;
+  statusText: string;
+  headers: Headers;
+  config: ResolvedFetchRequestConfig;
+  request?: Request;
+}
+
+// 错误
+class FetchError<T = any> extends Error {
+  code?: string;
+  config?: FetchRequestConfig;
+  request?: Request;
+  response?: FetchResponse<T>;
+  get status(): number | undefined; // 别名 statusCode
+  get statusText(): string | undefined; // 别名 statusMessage
+  get data(): T | undefined;
+}
+
+class BackendError<ResponseData = any> extends FetchError<ResponseData> {
+  // error.code === 'BACKEND_ERROR'
+}
+
+// 请求配置
+interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omit<
+  RequestInit,
+  'method' | 'headers' | 'body' | 'signal'
+> {
+  baseURL?: string;
+  url?: string;
+  method?: HttpMethod | string;
+  headers?: Headers | Record<string, string>;
+  params?: Record<string, any>;
+  data?: any;
+  responseType?: R;
+  timeout?: number;
+  signal?: AbortSignal;
+  validateStatus?: (status: number) => boolean;
+  paramsSerializer?: (params: Record<string, any>) => string;
+  parseResponse?: (text: string) => any;
+  getFileName?: (response: FetchResponse) => string;
+  retry?: RetryOptions;
+  adapter?: FetchAdapter;
+  ignoreResponseError?: boolean;
+  // 传输层钩子(支持数组)
+  onRequest?: FetchHook;
+  onRequestError?: FetchHook;
+  onResponse?: FetchHook;
+  onResponseError?: FetchHook;
+}
+
+// 响应类型
+type ResponseType = 'json' | 'auto' | 'blob' | 'arraybuffer' | 'stream' | 'text' | 'document';
+
+// 适配器
+type FetchAdapter = (url: string, init: FetchAdapterInit) => Promise<FetchAdapterResponse>;
+```
+
+> **@deprecated**:以下废弃名称仍为向后兼容而导出,但将在未来版本中移除:
+>
+> - `OpenapiClient` → 请使用 `TypedClient`
+> - `FlatOpenapiClient` → 请使用 `FlatTypedClient`
+> - `createOpenapiClient` → 请使用 `createTypedClient`
+> - `createFlatOpenapiClient` → 请使用 `createFlatTypedClient`
+
+## ❓ FAQ
+
+### 与 @soybeanjs/request 的区别?
+
+| 特性         | @soybeanjs/request  | @soybeanjs/fetch              |
+| ------------ | ------------------- | ----------------------------- |
+| 底层         | Axios               | 原生 Fetch                    |
+| 运行时依赖   | axios, axios-retry  | 零依赖                        |
+| Headers      | AxiosHeaders(`[]`)  | 原生 Headers(`.set()/.get()`) |
+| 重试         | axios-retry         | 内置实现                      |
+| 适配器       | 不支持              | ✅ 支持自定义适配器           |
+| $fetch API   | 不支持              | ✅ 兼容 ofetch                |
+| 传输层钩子   | 不支持              | ✅ onRequest/onResponse/...   |
+| 自动响应检测 | 不支持              | ✅ responseType: 'auto'       |
+| 业务 API     | ✅ createRequest 等 | ✅ 完全兼容                   |
+
+### 如何从 @soybeanjs/request 迁移?
+
+1. 替换 `import { ... } from '@soybeanjs/request'` → `from '@soybeanjs/fetch'`
+2. 替换 `AxiosResponse` → `FetchResponse`
+3. 替换 `AxiosError` → `FetchError`
+4. 替换 `config.headers.Authorization = 'xxx'` → `config.headers.set('Authorization', 'xxx')`
+5. 替换 `'axios-retry'` 配置 → `retry` 配置
+6. `instance.request(config)` → `instance(config)`(无 `.request` 方法)
+
+### 为什么需要两种请求实例?
+
+- **createRequest**:适合大多数场景,请求失败会抛出异常,可使用 try-catch 捕获
+- **createFlatRequest**:适合需要统一处理成功和失败的场景,不会抛出异常,通过返回值判断
+
+### 什么时候用 $fetch,什么时候用 createRequest?
+
+- **$fetch**:简单的 HTTP 调用,不需要业务逻辑校验(如调用第三方 API)
+- **createRequest**:需要业务逻辑(如 `isBackendSuccess`、`transform`、`onBackendFail` 重试)
+
+### 如何实现请求取消?
+
+```typescript
+const controller = new AbortController();
+
+const promise = request({
+  url: '/users',
+  signal: controller.signal
+});
+
+// 取消请求(不会触发重试)
+controller.abort();
+```
+
+## 📄 License
+
+[MIT](./LICENSE) License © 2026 [Soybean](https://github.com/soybeanjs)

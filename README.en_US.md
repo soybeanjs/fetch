@@ -1,0 +1,1012 @@
+# @soybeanjs/fetch
+
+English | [简体中文](./README.md)
+
+A lightweight, type-safe HTTP request library built on the native Fetch API, with zero runtime dependencies, elegant API design, and powerful feature support.
+
+## ✨ Features
+
+- 🎯 **Type-Safe**: Full TypeScript support with intelligent type inference
+- 🚀 **Zero Dependencies**: Built on native `fetch`, no axios or other runtime deps
+- 🔄 **Dual Instance Modes**: Standard request instance and flat response instance
+- 📦 **File Downloads**: Auto-parse filenames and content types, multiple formats supported
+- 🎣 **Lifecycle Hooks**: Complete request lifecycle management (transport + business layers)
+- 🔁 **Auto Retry**: Built-in retry mechanism with custom conditions and delays
+- ⏱️ **Timeout Control**: Based on `AbortController`, distinguishes timeout from user abort
+- 🛡️ **Error Handling**: Unified error handling for both business and network errors
+- 📝 **Response Transform**: Flexible response data transformation
+- 🎨 **State Management**: Built-in state sharing across instances
+- 🔌 **Adapter API**: Pluggable transport layer for uniapp, WeChat Mini Programs, etc.
+- 🌐 **$fetch API**: ofetch-compatible lightweight fetch client
+- 📡 **Transport Hooks**: `onRequest` / `onResponse` / `onRequestError` / `onResponseError`, array support
+- 🔍 **Auto Response Type Detection**: Auto-detect response type from `Content-Type` (incl. SSE)
+
+## 📦 Installation
+
+```bash
+# npm
+npm install @soybeanjs/fetch
+
+# yarn
+yarn add @soybeanjs/fetch
+
+# pnpm
+pnpm add @soybeanjs/fetch
+```
+
+> **Requirements**: Node.js 18+ or modern browsers (native `fetch` support required).
+
+## 🚀 Quick Start
+
+### Basic Usage
+
+```typescript
+import { createRequest } from '@soybeanjs/fetch';
+import type { FetchResponse } from '@soybeanjs/fetch';
+
+interface ApiResponse<T = any> {
+  code: number;
+  data: T;
+  message: string;
+}
+
+// Create request instance
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    timeout: 10000
+  },
+  {
+    // Transform response data
+    // !!!Make sure to type the response parameter for proper type inference
+    transform: (response: FetchResponse<ApiResponse>) => {
+      return response.data.data;
+    },
+    // Pre-request interceptor
+    onRequest: async config => {
+      // Add token (headers is a native Headers instance, use .set())
+      config.headers.set('Authorization', `Bearer ${getToken()}`);
+      return config;
+    },
+    // Check backend business success
+    isBackendSuccess: response => {
+      return response.data.code === 200;
+    },
+    // Backend business failure handler
+    onBackendFail: async (response, instance) => {
+      // Handle token expiration, etc.
+      if (response.data.code === 401) {
+        await refreshToken();
+        // Re-send request (full pipeline)
+        return instance(response.config);
+      }
+    },
+    // Error handler
+    onError: async error => {
+      console.error('Request failed:', error.message);
+    }
+  }
+);
+
+// Make a request
+const data = await request({
+  url: '/users',
+  method: 'GET'
+});
+```
+
+### Flat Response Instance
+
+Never throws — determine success/failure via the return value:
+
+```typescript
+import { createFlatRequest } from '@soybeanjs/fetch';
+
+const flatRequest = createFlatRequest(
+  { baseURL: 'https://api.example.com' },
+  options
+);
+
+const { data, error, response } = await flatRequest({
+  url: '/users',
+  method: 'GET'
+});
+
+if (error) {
+  console.error('Request failed:', error);
+} else {
+  console.log('Success:', data);
+}
+```
+
+### $fetch — Lightweight Fetch Client (ofetch-compatible)
+
+No business logic needed — make requests directly:
+
+```typescript
+import { $fetch } from '@soybeanjs/fetch';
+
+// GET request
+const user = await $fetch<User>('/api/users/1');
+
+// POST request
+const created = await $fetch<User>('/api/users', {
+  method: 'POST',
+  data: { name: 'John' }
+});
+
+// Create instance with defaults
+const apiFetch = $fetch.create({
+  baseURL: 'https://api.example.com',
+  headers: { Authorization: 'Bearer xxx' },
+  retry: { retries: 3 }
+});
+
+// Get full response (no throw)
+const response = await $fetch.raw('/api/users/1');
+console.log(response.status, response.data);
+
+// Direct access to native fetch
+$fetch.native('https://example.com');
+```
+
+## 📖 Core Concepts
+
+### RequestOption
+
+| Option            | Type       | Required | Description                                                                                  |
+| ----------------- | ---------- | -------- | -------------------------------------------------------------------------------------------- |
+| `transform`       | `Function` | Yes      | Transform response data to business data                                                     |
+| `onRequest`       | `Function` | No       | Pre-request interceptor (business layer, return-value mode), e.g. add token                  |
+| `isBackendSuccess`| `Function` | Yes      | Check if backend business logic succeeded                                                    |
+| `onBackendFail`   | `Function` | No       | Backend failure callback, e.g. token refresh. Return a new `FetchResponse` to retry          |
+| `onError`         | `Function` | No       | Request error handler, e.g. show error toast                                                 |
+| `defaultState`    | `Object`   | No       | Default state object                                                                         |
+| `backendErrorMsg` | `string`   | No       | Backend error message for constructing [`BackendError`](#error-identification)               |
+
+> Business errors (failed `isBackendSuccess`) are thrown as `BackendError` instances (extends `FetchError`, `error.code === 'BACKEND_ERROR'`).
+> Detect via `instanceof BackendError` or `error.code === BACKEND_ERROR_FLAG`, see [Error Identification](#error-identification).
+
+### Transport Hooks (ofetch-compatible)
+
+In addition to business hooks (`RequestOption`), `FetchRequestConfig` supports transport hooks that accept **a single function or an array**:
+
+```typescript
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    // Transport hooks (can also be set per-request)
+    onRequest: [
+      ({ request, options }) => {
+        console.log('→', request);
+      }
+    ],
+    onResponse: [
+      ({ response }) => {
+        console.log('←', response.status);
+      }
+    ],
+    onRequestError: [
+      ({ error }) => {
+        console.error('Request error:', error.message);
+      }
+    ],
+    onResponseError: [
+      ({ response, error }) => {
+        console.error('Response error:', response.status);
+      }
+    ]
+  },
+  options
+);
+```
+
+| Hook              | Trigger                      | Arguments                     |
+| ----------------- | ---------------------------- | ----------------------------- |
+| `onRequest`       | Before request is sent       | `FetchContext`                |
+| `onRequestError`  | Request fails (network/timeout) | `FetchContext` (with `error`) |
+| `onResponse`      | After response received & parsed | `FetchContext` (with `response`) |
+| `onResponseError` | Response has error status (4xx/5xx) | `FetchContext` (with `error`) |
+
+> **Difference from business hooks**: Transport hooks are configured in `FetchRequestConfig`, support arrays and the `FetchContext` pattern; business hooks are in `RequestOption`, single function, return-value mode. Transport hooks execute before business hooks.
+
+### Error Identification
+
+Business errors (determined by `isBackendSuccess` as failure) are constructed as `BackendError` instances:
+
+```typescript
+import { FetchError, BackendError, BACKEND_ERROR_FLAG } from '@soybeanjs/fetch';
+
+try {
+  await request({ url: '/users/1' });
+} catch (error) {
+  if (error instanceof BackendError) {
+    // Business error, e.g. code !== 200
+    console.error('Business error:', error.message);
+  } else if (error instanceof FetchError) {
+    // Network / HTTP error
+    console.error('Network error:', error.message);
+  }
+}
+
+// Or detect via code (equivalent to instanceof BackendError)
+if (fetchError.code === BACKEND_ERROR_FLAG) {
+  // ...
+}
+```
+
+`FetchError` provides these convenience properties:
+
+| Property       | Description                              |
+| -------------- | ---------------------------------------- |
+| `status`       | HTTP status code (alias `statusCode`)     |
+| `statusText`   | HTTP status text (alias `statusMessage`)  |
+| `data`         | Response data                             |
+| `code`         | Error code                                |
+| `response`     | Full `FetchResponse`                      |
+| `config`       | Request config                            |
+
+### Request Pipeline
+
+```
+User initiates request
+    ↓
+Transport onRequest hook (FetchContext mode)
+    ↓
+Business onRequest hook (return-value mode)
+    ↓
+Send HTTP request (adapter)
+    ↓
+├─ Network error → Transport onRequestError → retry → onError
+    ↓
+Receive response → Parse body (auto-detect type)
+    ↓
+Transport onResponse hook
+    ↓
+validateStatus check
+    ├─ Error status → Transport onResponseError → retry → onError
+    ↓
+processResponse (business logic)
+    ├─ coerceBinaryToJsonResponse (binary → JSON)
+    ├─ isBackendSuccess check
+    │   ├─ Success → transform → return business data
+    │   └─ Failure → onBackendFail → BackendError → onError
+    ├─ File types → return file info object
+    └─ Other → return raw data
+```
+
+## 🎯 Advanced Features
+
+### 1. File Downloads
+
+Auto-parse filenames and content types:
+
+```typescript
+// Download file
+const fileData = await request({
+  url: '/download/report.pdf',
+  method: 'GET',
+  responseType: 'blob'
+});
+
+// fileData contains:
+// {
+//   file: Blob,
+//   filename: 'report.pdf',
+//   contentType: 'application/pdf'
+// }
+
+// Custom filename parsing
+const fileData = await request({
+  url: '/download/file',
+  responseType: 'blob',
+  getFileName: response => {
+    // Custom parsing logic
+    return 'custom-filename.pdf';
+  }
+});
+
+// Use built-in downloadFile utility to trigger browser download
+import { downloadFile } from '@soybeanjs/fetch';
+
+downloadFile(fileData.file, fileData.filename);
+```
+
+Supported file types:
+
+- `blob` → `FileResponseData<Blob>`
+- `arraybuffer` → `FileResponseData<ArrayBuffer>`
+- `stream` → `FileResponseData<ReadableStream<Uint8Array>>`
+
+### 2. Response Types
+
+```typescript
+// JSON (default), add a generic parameter for business data type; other types don't need it
+interface UserData {
+  id: number;
+  name: string;
+}
+const data = await request<UserData>({
+  url: '/users/123'
+});
+
+// auto — auto-detect from Content-Type (recommended for $fetch)
+const data = await $fetch('/api/data', { responseType: 'auto' });
+
+// Text
+const text = await request({
+  url: '/data.csv',
+  responseType: 'text'
+});
+
+// HTML/XML document (using DOMParser)
+const doc = await request({
+  url: '/template.html',
+  responseType: 'document'
+});
+
+// Blob (file)
+const file = await request({
+  url: '/download/image.png',
+  responseType: 'blob'
+});
+
+// ArrayBuffer
+const buffer = await request({
+  url: '/download/data.bin',
+  responseType: 'arraybuffer'
+});
+
+// Stream (SSE / large file streaming)
+const stream = await request({
+  url: '/events',
+  responseType: 'stream'
+});
+```
+
+Supported response types:
+
+| Type          | Description                                        |
+| ------------- | -------------------------------------------------- |
+| `json`        | JSON (default)                                     |
+| `auto`        | Auto-detect from `Content-Type`                    |
+| `text`        | Text                                               |
+| `blob`        | Blob file                                          |
+| `arraybuffer`  | ArrayBuffer                                        |
+| `stream`      | ReadableStream (incl. SSE `text/event-stream`)    |
+| `document`    | HTML/XML document (DOMParser, browser only)        |
+
+### 3. State Management
+
+Share state across request instances:
+
+```typescript
+interface CustomState {
+  token: string;
+  userId: number;
+}
+
+const request = createRequest(
+  { baseURL: 'https://api.example.com' },
+  {
+    defaultState: {
+      token: '',
+      userId: 0
+    } as CustomState,
+    // ...other options
+  }
+);
+
+// Access and modify state
+request.state.token = 'new-token';
+request.state.userId = 123;
+
+// Use state in hooks
+onRequest: config => {
+  config.headers.set('Authorization', `Bearer ${request.state.token}`);
+  return config;
+}
+```
+
+### 4. Auto Retry
+
+Built-in retry mechanism, no extra dependencies:
+
+```typescript
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    retry: {
+      retries: 3,
+      retryDelay: retryCount => retryCount * 1000,
+      retryCondition: error => {
+        // Only retry on network errors or 5xx errors
+        return !error.response || (error.response.status >= 500);
+      }
+    }
+  },
+  options
+);
+```
+
+| Option            | Type                                       | Default                     | Description              |
+| ----------------- | ------------------------------------------ | --------------------------- | ------------------------ |
+| `retries`         | `number`                                   | `0`                         | Number of retries        |
+| `retryDelay`      | `(count, error) => number`                 | Linear backoff              | Retry delay (ms)         |
+| `retryCondition`  | `(error) => boolean \| Promise<boolean>`   | Network errors + retry codes | Retry condition          |
+
+Default retry status codes: `408, 409, 425, 429, 500, 502, 503, 504`
+
+> User-initiated abort (non-timeout) does not trigger retries.
+
+### 5. Timeout Control
+
+Based on `AbortController`, distinguishes timeout from user abort:
+
+```typescript
+const request = createRequest(
+  { timeout: 10000 },
+  options
+);
+
+// Timeout throws FetchError with code 'ERR_TIMEOUT'
+// Error message format: [GET] "https://...": Request timeout of 10000ms exceeded
+
+// User-initiated abort (no retry)
+const controller = new AbortController();
+const promise = request({
+  url: '/users',
+  signal: controller.signal
+});
+
+// Cancel request
+controller.abort();
+```
+
+### 6. Type Inference
+
+Full TypeScript support:
+
+```typescript
+interface User {
+  id: number;
+  name: string;
+}
+
+interface ApiResponse<T = any> {
+  code: number;
+  data: T;
+  message: string;
+}
+
+// ResponseData: raw backend response type
+// ApiData: business data type
+const request = createRequest(
+  { baseURL: 'https://api.example.com' },
+  {
+    transform: (response: FetchResponse<ApiResponse>) => response.data.data
+  }
+);
+
+// Type inference: data is ApiResponse<User>
+const user = await request<User>({
+  url: '/users/123'
+});
+```
+
+### 7. raw Method — Get Raw Response
+
+Use `request.raw()` to skip `transform` and get the full `FetchResponse` object.
+
+**Difference from `request()`:**
+
+| Method          | Return Value                  | Through transform? |
+| --------------- | ----------------------------- | ------------------ |
+| `request()`     | Transformed business data     | ✅ Yes             |
+| `request.raw()` | Full `FetchResponse` object   | ❌ No              |
+
+```typescript
+// 1. Get custom response headers
+const response = await request.raw<User[]>({
+  url: '/users',
+  method: 'GET'
+});
+
+const totalCount = response.headers.get('x-total-count');
+const requestId = response.headers.get('x-request-id');
+const statusCode = response.status;
+
+// 2. Get raw response + file info for downloads
+const fileResponse = await request.raw({
+  url: '/download/report.pdf',
+  responseType: 'blob'
+});
+
+// fileResponse.data contains { file, filename, contentType }
+```
+
+> The flat instance created by `createFlatRequest` also provides `flatRequest.raw()` with the same semantics, but never throws.
+
+### 8. HTTP Method Shorthands
+
+Both `RequestInstance` and `FlatRequestInstance` provide shorthand methods for common HTTP verbs:
+
+```typescript
+// GET request
+const users = await request.get<User[]>('/users');
+const usersWithQuery = await request.get<User[]>('/users', {
+  params: { page: 1, pageSize: 10 }
+});
+
+// POST request
+const newUser = await request.post<User>('/users', {
+  name: 'John',
+  email: 'john@example.com'
+});
+
+// PUT request
+const updatedUser = await request.put<User>('/users/123', {
+  name: 'John (updated)'
+});
+
+// PATCH request
+const patchedUser = await request.patch<User>('/users/123', {
+  email: 'newemail@example.com'
+});
+
+// DELETE request
+await request.delete('/users/123');
+```
+
+### 9. Adapter API — Cross-Platform Support
+
+Use custom adapters to run in non-standard fetch environments like uniapp, WeChat Mini Programs:
+
+```typescript
+import { createRequest, createAdapterResponse } from '@soybeanjs/fetch';
+
+// uniapp adapter example
+const uniappAdapter = async (url, init) => {
+  const res = await uni.request({
+    url,
+    method: init.method as any,
+    header: Object.fromEntries(init.headers.entries()),
+    data: init.body,
+    responseType: 'arraybuffer'
+  });
+
+  return createAdapterResponse({
+    status: res.statusCode,
+    statusText: '',
+    headers: new Headers(res.header),
+    body: res.data instanceof ArrayBuffer ? res.data : new ArrayBuffer(0)
+  });
+};
+
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    adapter: uniappAdapter
+  },
+  options
+);
+```
+
+### 10. ignoreResponseError — Ignore Response Errors
+
+When `ignoreResponseError` is `true`, skips `validateStatus` check and returns the response instead of throwing:
+
+```typescript
+const response = await $fetch.raw('/api/users/404', {
+  ignoreResponseError: true
+});
+
+// Even 404 returns response without throwing FetchError
+console.log(response.status); // 404
+console.log(response.data);   // Error page data
+```
+
+### 11. Type-Safe Client (Typed Client / OpenAPI)
+
+After generating `paths` types with [openapi-typescript](https://openapi-ts.dev/), you can create **fully type-safe** request clients.
+
+> **Prerequisite**: Generate types from `openapi.json` using `openapi-typescript`:
+>
+> ```bash
+> npx openapi-typescript ./openapi.json -o ./src/openapi.d.ts
+> ```
+
+#### createTypedClient
+
+```typescript
+import { createRequest, createTypedClient } from '@soybeanjs/fetch';
+import type { paths } from './openapi.d.ts';
+
+const request = createRequest(
+  { baseURL: 'https://api.example.com' },
+  {/* ... */}
+);
+
+// Field = 'data' to unwrap envelope structure
+const client = createTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
+
+// Full type inference for paths, params, body, and return value
+const menus = await client.get('/menu/list', {
+  params: { query: { page: 1, pageSize: 10 } }
+});
+
+// POST request
+const loginResult = await client.post('/auth/login', {
+  body: { username: 'admin', password: '123456' }
+});
+
+// raw method — skip transform, return full FetchResponse
+const response = await client.raw.get('/menu/list', {
+  params: { query: { page: 1 } }
+});
+```
+
+#### createFlatTypedClient
+
+Wraps a flat instance created by `createFlatRequest`, **never throws**:
+
+```typescript
+import { createFlatRequest, createFlatTypedClient } from '@soybeanjs/fetch';
+
+const flatRequest = createFlatRequest(
+  { baseURL: 'https://api.example.com' },
+  {/* ... */}
+);
+
+const client = createFlatTypedClient<paths, '/api/v1', 'data'>(flatRequest, '/api/v1');
+
+const { data, error } = await client.get('/menu/list', {
+  params: { query: { page: 1 } }
+});
+
+if (error) {
+  console.error('Request failed:', error.message);
+} else {
+  console.log('Menus:', data);
+}
+```
+
+## 🛠️ Utilities
+
+### parseContentDisposition
+
+Parse `Content-Disposition` header to extract filename:
+
+```typescript
+import { parseContentDisposition } from '@soybeanjs/fetch';
+
+const filename = parseContentDisposition("attachment; filename*=UTF-8''%E6%96%87%E4%BB%B6.pdf");
+// '文件.pdf'
+```
+
+### downloadFile
+
+Trigger file download in browser:
+
+```typescript
+import { downloadFile } from '@soybeanjs/fetch';
+
+downloadFile(blob, 'report.pdf');
+```
+
+### createFetch / $fetch
+
+Create an ofetch-compatible lightweight fetch client:
+
+```typescript
+import { $fetch, createFetch } from '@soybeanjs/fetch';
+
+// Use default instance
+const data = await $fetch('/api/users/1');
+
+// Create custom instance
+const apiFetch = createFetch({
+  baseURL: 'https://api.example.com',
+  retry: { retries: 3 },
+  onRequest: [({ request }) => console.log('→', request)]
+});
+
+// Chain creation
+const authFetch = apiFetch.create({
+  headers: { Authorization: 'Bearer xxx' }
+});
+```
+
+### createAdapterResponse
+
+Helper for adapter authors to construct `FetchAdapterResponse`:
+
+```typescript
+import { createAdapterResponse } from '@soybeanjs/fetch';
+
+const response = createAdapterResponse({
+  status: 200,
+  statusText: 'OK',
+  headers: new Headers({ 'content-type': 'application/json' }),
+  body: responseBody
+});
+```
+
+## 📝 Complete Example
+
+### Authenticated API Requests
+
+```typescript
+import { createRequest } from '@soybeanjs/fetch';
+import type { FetchResponse } from '@soybeanjs/fetch';
+
+interface ApiResponse<T = any> {
+  code: number;
+  data: T;
+  message: string;
+}
+
+interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    timeout: 10000
+  },
+  {
+    transform: (response: FetchResponse<ApiResponse>) => {
+      return response.data.data;
+    },
+    onRequest: async config => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.set('Authorization', `Bearer ${token}`);
+      }
+      return config;
+    },
+    isBackendSuccess: response => {
+      return response.data.code === 200;
+    },
+    onBackendFail: async (response, instance) => {
+      const { code } = response.data;
+
+      // Token expired, refresh and retry
+      if (code === 401) {
+        const newToken = await refreshToken();
+        localStorage.setItem('token', newToken);
+        response.config.headers.set('Authorization', `Bearer ${newToken}`);
+        return instance(response.config);
+      }
+    },
+    onError: async error => {
+      console.error(error.message);
+    }
+  }
+);
+
+// 1. Get user info
+async function getUser(id: number) {
+  const user = await request<User>({ url: `/users/${id}` });
+  return user;
+}
+
+// 2. Create user
+async function createUser(data: Partial<User>) {
+  const user = await request.post<User>('/users', data);
+  return user;
+}
+
+// 3. Download file
+async function downloadReport(reportId: string) {
+  const fileData = await request.get('/download/report.pdf', {
+    responseType: 'blob'
+  });
+
+  const url = URL.createObjectURL(fileData.file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileData.filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// 4. Upload file
+async function uploadFile(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return await request.post('/upload', formData);
+}
+```
+
+## 🔧 API Reference
+
+### createRequest
+
+Create a standard request instance.
+
+```typescript
+function createRequest<ResponseData, ApiData, State>(
+  config?: FetchRequestConfig,
+  options?: RequestOption<ResponseData, ApiData, State>
+): RequestInstance<ApiData, State>;
+```
+
+### createFlatRequest
+
+Create a flat request instance that never throws.
+
+```typescript
+function createFlatRequest<ResponseData, ApiData, State>(
+  config?: FetchRequestConfig,
+  options?: RequestOption<ResponseData, ApiData, State>
+): FlatRequestInstance<ResponseData, ApiData, State>;
+```
+
+### createFetch / $fetch
+
+Create an ofetch-compatible lightweight fetch client.
+
+```typescript
+function createFetch(defaults?: FetchRequestConfig): $Fetch;
+
+interface $Fetch {
+  <T = any, R extends ResponseType = 'json'>(
+    request: string,
+    options?: FetchRequestConfig<R>
+  ): Promise<MappedType<R, T>>;
+  raw<T = any, R extends ResponseType = 'json'>(
+    request: string,
+    options?: FetchRequestConfig<R>
+  ): Promise<FetchResponse<MappedType<R, T>>>;
+  native: typeof fetch;
+  create(defaults: FetchRequestConfig): $Fetch;
+}
+```
+
+### createTypedClient
+
+Create a type-safe client based on `paths` types generated by openapi-typescript.
+
+```typescript
+function createTypedClient<Paths, Prefix = '', Field = ''>(
+  requestInstance: RequestInstance<any, any>,
+  prefix?: Prefix
+): TypedClient<Paths, Prefix, Field>;
+```
+
+### createFlatTypedClient
+
+Create a type-safe flat client that never throws.
+
+```typescript
+function createFlatTypedClient<Paths, Prefix = '', Field = ''>(
+  flatRequestInstance: FlatRequestInstance<any, any, any>,
+  prefix?: Prefix
+): FlatTypedClient<Paths, Prefix, Field>;
+```
+
+### Type Definitions
+
+```typescript
+// Response
+interface FetchResponse<T = any> {
+  data: T;
+  status: number;
+  statusText: string;
+  headers: Headers;
+  config: ResolvedFetchRequestConfig;
+  request?: Request;
+}
+
+// Error
+class FetchError<T = any> extends Error {
+  code?: string;
+  config?: FetchRequestConfig;
+  request?: Request;
+  response?: FetchResponse<T>;
+  get status(): number | undefined;       // alias statusCode
+  get statusText(): string | undefined;   // alias statusMessage
+  get data(): T | undefined;
+}
+
+class BackendError<ResponseData = any> extends FetchError<ResponseData> {
+  // error.code === 'BACKEND_ERROR'
+}
+
+// Request config
+interface FetchRequestConfig<R extends ResponseType = 'json'>
+  extends Omit<RequestInit, 'method' | 'headers' | 'body' | 'signal'> {
+  baseURL?: string;
+  url?: string;
+  method?: HttpMethod | string;
+  headers?: Headers | Record<string, string>;
+  params?: Record<string, any>;
+  data?: any;
+  responseType?: R;
+  timeout?: number;
+  signal?: AbortSignal;
+  validateStatus?: (status: number) => boolean;
+  paramsSerializer?: (params: Record<string, any>) => string;
+  parseResponse?: (text: string) => any;
+  getFileName?: (response: FetchResponse) => string;
+  retry?: RetryOptions;
+  adapter?: FetchAdapter;
+  ignoreResponseError?: boolean;
+  // Transport hooks (array support)
+  onRequest?: FetchHook;
+  onRequestError?: FetchHook;
+  onResponse?: FetchHook;
+  onResponseError?: FetchHook;
+}
+
+// Response type
+type ResponseType = 'json' | 'auto' | 'blob' | 'arraybuffer' | 'stream' | 'text' | 'document';
+
+// Adapter
+type FetchAdapter = (url: string, init: FetchAdapterInit) => Promise<FetchAdapterResponse>;
+```
+
+> **@deprecated**: The following deprecated names are still exported for backward compatibility but will be removed in a future version:
+>
+> - `OpenapiClient` → use `TypedClient`
+> - `FlatOpenapiClient` → use `FlatTypedClient`
+> - `createOpenapiClient` → use `createTypedClient`
+> - `createFlatOpenapiClient` → use `createFlatTypedClient`
+
+## ❓ FAQ
+
+### Difference from @soybeanjs/request?
+
+| Feature          | @soybeanjs/request    | @soybeanjs/fetch           |
+| ---------------- | --------------------- | -------------------------- |
+| Underlying      | Axios                 | Native Fetch               |
+| Runtime deps    | axios, axios-retry    | Zero dependencies          |
+| Headers         | AxiosHeaders (`[]`)   | Native Headers (`.set()/.get()`) |
+| Retry           | axios-retry           | Built-in                   |
+| Adapter         | Not supported         | ✅ Custom adapters         |
+| $fetch API      | Not supported         | ✅ ofetch-compatible       |
+| Transport hooks | Not supported         | ✅ onRequest/onResponse/... |
+| Auto response detection | Not supported | ✅ responseType: 'auto'   |
+| Business API    | ✅ createRequest etc. | ✅ Fully compatible         |
+
+### How to migrate from @soybeanjs/request?
+
+1. Replace `import { ... } from '@soybeanjs/request'` → `from '@soybeanjs/fetch'`
+2. Replace `AxiosResponse` → `FetchResponse`
+3. Replace `AxiosError` → `FetchError`
+4. Replace `config.headers.Authorization = 'xxx'` → `config.headers.set('Authorization', 'xxx')`
+5. Replace `'axios-retry'` config → `retry` config
+6. `instance.request(config)` → `instance(config)` (no `.request` method)
+
+### Why two request instances?
+
+- **createRequest**: For most scenarios, throws on failure, use try-catch to handle
+- **createFlatRequest**: For scenarios needing unified success/failure handling, never throws, judge by return value
+
+### When to use $fetch vs createRequest?
+
+- **$fetch**: Simple HTTP calls without business logic validation (e.g. calling third-party APIs)
+- **createRequest**: When you need business logic (e.g. `isBackendSuccess`, `transform`, `onBackendFail` retry)
+
+### How to cancel a request?
+
+```typescript
+const controller = new AbortController();
+
+const promise = request({
+  url: '/users',
+  signal: controller.signal
+});
+
+// Cancel request (does not trigger retry)
+controller.abort();
+```
+
+## 📄 License
+
+[MIT](./LICENSE) License © 2026 [Soybean](https://github.com/soybeanjs)

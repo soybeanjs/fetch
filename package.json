@@ -33,7 +33,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "vp build",
+    "build": "vp pack",
     "commit": "soy git-commit",
     "commit:zh": "soy git-commit -l=zh-cn",
     "fmt": "vp fmt",

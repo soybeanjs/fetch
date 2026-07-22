@@ -8,6 +8,9 @@ export default defineConfig({
   fmt,
   lint,
   pack: {
-    entry: 'src/index.ts'
+    entry: 'src/index.ts',
+    platform: 'neutral',
+    clean: true,
+    minify: true
   }
 });
