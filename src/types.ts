@@ -271,6 +271,114 @@ export interface RetryOptions {
   retryCondition?: (error: FetchError) => boolean | Promise<boolean>;
 }
 
+// ============================================================
+//  Cache (请求缓存)
+// ============================================================
+
+/**
+ * Cache options for request caching.
+ *
+ * 请求缓存选项。
+ */
+export interface CacheOptions {
+  /** Time-to-live in milliseconds (缓存有效期,毫秒) */
+  ttl: number;
+  /** HTTP methods to cache (要缓存的 HTTP 方法,默认 ['get']) */
+  methods?: HttpMethod[];
+  /** Maximum number of cached entries (最大缓存条数,默认 100) */
+  max?: number;
+  /** Custom cache key generator (自定义缓存 key 生成函数) */
+  key?: (config: ResolvedFetchRequestConfig) => string;
+}
+
+// ============================================================
+//  Dedupe (请求去重)
+// ============================================================
+
+/**
+ * Dedupe options for in-flight request deduplication.
+ *
+ * 在途请求去重选项。
+ */
+export interface DedupeOptions {
+  /** Custom dedupe key generator (自定义去重 key 生成函数) */
+  key?: (config: ResolvedFetchRequestConfig) => string;
+}
+
+// ============================================================
+//  Concurrency (并发限制)
+// ============================================================
+
+/**
+ * Concurrency control options.
+ *
+ * 并发控制选项。
+ */
+export interface ConcurrencyOptions {
+  /** Maximum number of concurrent in-flight requests (最大并发请求数) */
+  maxConcurrent: number;
+}
+
+// ============================================================
+//  Loading & Slow Request (加载状态与慢请求追踪)
+// ============================================================
+
+/**
+ * Slow request entry passed to the `onSlowRequest` callback.
+ *
+ * 传递给 `onSlowRequest` 回调的慢请求条目。
+ */
+export interface SlowRequestEntry {
+  /** Request URL (请求 URL) */
+  url: string;
+  /** HTTP method (HTTP 方法) */
+  method: string;
+  /** Duration in milliseconds (耗时,毫秒) */
+  duration: number;
+}
+
+// ============================================================
+//  Auth (认证 — Token 管理)
+// ============================================================
+
+/**
+ * Authentication options for automatic token attachment and refresh.
+ *
+ * 自动 Token 附加与刷新的认证选项。
+ */
+export interface AuthOptions {
+  /** Get the current auth token (获取当前 token) */
+  getToken?: () => string | null | undefined | Promise<string | null | undefined>;
+  /** Refresh the token and return the new one (刷新 token 并返回新 token) */
+  refreshToken?: () => Promise<string | null>;
+  /** Condition to trigger token refresh — status code or custom predicate (触发刷新的条件,默认 401) */
+  refreshOn?: number | ((status: number, response: FetchResponse) => boolean);
+  /** Called when refresh fails or no refreshToken is available (刷新失败或无 refreshToken 时调用) */
+  onUnauthorized?: () => void;
+}
+
+// ============================================================
+//  Schema Validation (响应 Schema 验证)
+// ============================================================
+
+/**
+ * A Zod-like schema interface (兼容 Zod 风格的 Schema)。
+ */
+interface ZodLikeSchema<T = any> {
+  parse(data: unknown): T;
+}
+
+/**
+ * Response schema for runtime validation — accepts Zod schemas or plain validator functions.
+ *
+ * 响应 Schema 验证类型 — 兼容 Zod Schema 或普通验证函数。
+ */
+export type DataSchema<T = any> = ZodLikeSchema<T> | ((data: unknown) => T);
+
+// ============================================================
+//  Request Config (请求配置)
+// ============================================================
+
 /**
  * Request configuration — the fetch equivalent of AxiosRequestConfig.
  *
@@ -426,6 +534,57 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omi
    */
   onResponseError?: FetchHook;
 
+  // ----- Enhanced features (增强功能) -----
+
+  /**
+   * Request cache options. Set to `false` to skip cache for a single request.
+   *
+   * 请求缓存选项。设为 `false` 可在单次请求中跳过缓存。
+   */
+  cache?: CacheOptions | false;
+
+  /**
+   * In-flight request deduplication. Set to `true` to use default key, or provide options with custom key.
+   *
+   * 在途请求去重。设为 `true` 使用默认 key,或传入带自定义 key 的选项。
+   */
+  dedupe?: boolean | DedupeOptions;
+
+  /**
+   * Concurrency control — limits the number of simultaneous in-flight requests.
+   *
+   * 并发控制 — 限制同时在途的请求数量。
+   */
+  concurrency?: ConcurrencyOptions;
+
+  /**
+   * Debounce delay in milliseconds. Requests with the same key within the delay window are cancelled and restarted.
+   *
+   * 防抖延迟(毫秒)。延迟窗口内相同 key 的请求会被取消并重新计时。
+   */
+  debounce?: number;
+
+  /**
+   * Throttle interval in milliseconds. Only one request per key is allowed within the interval; others are rejected with ERR_THROTTLED.
+   *
+   * 节流间隔(毫秒)。间隔内相同 key 只允许一次请求,其余被拒绝并抛出 ERR_THROTTLED。
+   */
+  throttle?: number;
+
+  /**
+   * Authentication options for automatic token attachment and refresh.
+   *
+   * 认证选项,用于自动附加 Token 和刷新 Token。
+   */
+  auth?: AuthOptions;
+
+  /**
+   * Response schema for runtime validation. Compatible with Zod schemas (`.parse()`) and plain validator functions.
+   *
+   * 响应 Schema 运行时验证。兼容 Zod Schema(`.parse()`)和普通验证函数。
+   */
+  schema?: DataSchema;
+
   /**
    * Transform request data before serialization (e.g., camelCase → snake_case).
    *
@@ -439,6 +598,35 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omi
    * 解析后转换响应数据(如 snake_case → camelCase)。
    */
   transformResponse?: (data: any, config: ResolvedFetchRequestConfig) => any;
+
+  /**
+   * Global loading state change callback. Fires `true` on the first request start, `false` on the last request end.
+   *
+   * 全局 loading 状态变化回调。第一个请求开始时 `true`,最后一个请求结束时 `false`。
+   */
+  onGlobalLoadingChange?: (loading: boolean) => void;
+
+  /**
+   * Per-request loading state change callback. Fires `true` when this request starts, `false` when it ends.
+   *
+   * 单请求 loading 状态变化回调。该请求开始时 `true`,结束时 `false`。
+   */
+  onLoadingChange?: (loading: boolean) => void;
+
+  /**
+   * Slow request threshold in milliseconds. Requests exceeding this duration trigger `onSlowRequest`.
+   * `0` disables slow request detection (default).
+   *
+   * 慢请求阈值(毫秒)。超过此时长的请求会触发 `onSlowRequest`。`0` 表示不启用(默认)。
+   */
+  slowThreshold?: number;
+
+  /**
+   * Callback triggered when a request exceeds `slowThreshold`.
+   *
+   * 请求超过 `slowThreshold` 时触发的回调。
+   */
+  onSlowRequest?: (entry: SlowRequestEntry) => void;
 }
 
 /**
@@ -542,6 +730,10 @@ export interface FetchInstance {
   (config: FetchRequestConfig): Promise<FetchResponse>;
   /** The resolved default config (解析后的默认配置) */
   defaults: ResolvedFetchRequestConfig;
+  /** Clear all cached responses (清除所有缓存响应) */
+  clearCache: () => void;
+  /** Delete a specific cache entry by key (按 key 删除特定缓存条目) */
+  deleteCache: (key: string) => void;
 }
 
 // ============================================================

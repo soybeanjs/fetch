@@ -200,6 +200,8 @@ export function createRequest<
 
   request.state = state;
   request.instance = instance;
+  request.clearCache = () => instance.clearCache();
+  request.deleteCache = (key: string) => instance.deleteCache(key);
 
   return request;
 }
@@ -337,6 +339,8 @@ export function createFlatRequest<
 
   flatRequest.state = state;
   flatRequest.instance = instance;
+  flatRequest.clearCache = () => instance.clearCache();
+  flatRequest.deleteCache = (key: string) => instance.deleteCache(key);
 
   return flatRequest;
 }

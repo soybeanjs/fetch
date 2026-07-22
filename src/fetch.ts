@@ -12,6 +12,7 @@ import {
 } from './utils';
 import { createUploadProgressAdapter, defaultAdapter } from './adapter';
 import { BackendError, FetchError } from './error';
+import { createEnhancedFetch, createEnhancedState, clearCache, deleteCache } from './enhanced';
 import { createRetryOptions } from './options';
 import type {
   $Fetch,
@@ -62,8 +63,19 @@ export function mergeConfig(
     onRequestError: config.onRequestError ?? defaults.onRequestError,
     onResponse: config.onResponse ?? defaults.onResponse,
     onResponseError: config.onResponseError ?? defaults.onResponseError,
+    cache: config.cache ?? defaults.cache,
+    dedupe: config.dedupe ?? defaults.dedupe,
+    concurrency: config.concurrency ?? defaults.concurrency,
+    debounce: config.debounce ?? defaults.debounce,
+    throttle: config.throttle ?? defaults.throttle,
+    auth: config.auth ?? defaults.auth,
+    schema: config.schema ?? defaults.schema,
     transformRequest: config.transformRequest ?? defaults.transformRequest,
-    transformResponse: config.transformResponse ?? defaults.transformResponse
+    transformResponse: config.transformResponse ?? defaults.transformResponse,
+    onGlobalLoadingChange: config.onGlobalLoadingChange ?? defaults.onGlobalLoadingChange,
+    onLoadingChange: config.onLoadingChange ?? defaults.onLoadingChange,
+    slowThreshold: config.slowThreshold ?? defaults.slowThreshold,
+    onSlowRequest: config.onSlowRequest ?? defaults.onSlowRequest
   };
 }
 
@@ -315,8 +327,10 @@ export function createFetchInstance<ResponseData, State extends Record<string, u
   opts: RequestOption<ResponseData, any, State>
 ): FetchInstance {
   const resolvedDefaults = resolveDefaults(defaults);
+  const enhancedState = createEnhancedState();
+  const enhancedFetch = createEnhancedFetch(fetchCore, enhancedState);
 
-  /** Raw fetch — applies business-level onRequest, then delegates to fetchCore. */
+  /** Raw fetch — applies business-level onRequest, then delegates to enhanced fetch. */
   async function fetchRaw(config: ResolvedFetchRequestConfig): Promise<FetchResponse> {
     // Business-level onRequest hook (from RequestOption)
     let resolvedConfig = config;
@@ -324,7 +338,7 @@ export function createFetchInstance<ResponseData, State extends Record<string, u
       const result = await opts.onRequest(config);
       if (result) resolvedConfig = result;
     }
-    return fetchCore(resolvedConfig);
+    return enhancedFetch(resolvedConfig);
   }
 
   // Full instance: fetchRaw + processResponse + onError
@@ -341,6 +355,8 @@ export function createFetchInstance<ResponseData, State extends Record<string, u
   } as FetchInstance;
 
   instance.defaults = resolvedDefaults;
+  instance.clearCache = () => clearCache(enhancedState);
+  instance.deleteCache = (key: string) => deleteCache(enhancedState, key);
   return instance;
 }
 
@@ -388,8 +404,19 @@ export function resolveDefaults(defaults: CreateFetchDefaults): ResolvedFetchReq
     onRequestError: defaults.onRequestError as any,
     onResponse: defaults.onResponse as any,
     onResponseError: defaults.onResponseError as any,
+    cache: defaults.cache,
+    dedupe: defaults.dedupe,
+    concurrency: defaults.concurrency,
+    debounce: defaults.debounce,
+    throttle: defaults.throttle,
+    auth: defaults.auth,
+    schema: defaults.schema,
     transformRequest: defaults.transformRequest,
-    transformResponse: defaults.transformResponse
+    transformResponse: defaults.transformResponse,
+    onGlobalLoadingChange: defaults.onGlobalLoadingChange,
+    onLoadingChange: defaults.onLoadingChange,
+    slowThreshold: defaults.slowThreshold,
+    onSlowRequest: defaults.onSlowRequest
   } as ResolvedFetchRequestConfig;
 }
 
