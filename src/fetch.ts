@@ -16,6 +16,7 @@ import { createRetryOptions } from './options';
 import type {
   $Fetch,
   CreateFetchDefaults,
+  DownloadProgressHandler,
   FetchAdapterInit,
   FetchAdapterResponse,
   FetchContext,
@@ -54,11 +55,15 @@ export function mergeConfig(
     timeout: config.timeout ?? defaults.timeout,
     adapter: config.adapter ?? defaults.adapter,
     onUploadProgress: config.onUploadProgress ?? defaults.onUploadProgress,
+    onDownloadProgress: config.onDownloadProgress ?? defaults.onDownloadProgress,
     ignoreResponseError: config.ignoreResponseError ?? defaults.ignoreResponseError,
+    requestCache: config.requestCache ?? defaults.requestCache,
     onRequest: config.onRequest ?? defaults.onRequest,
     onRequestError: config.onRequestError ?? defaults.onRequestError,
     onResponse: config.onResponse ?? defaults.onResponse,
-    onResponseError: config.onResponseError ?? defaults.onResponseError
+    onResponseError: config.onResponseError ?? defaults.onResponseError,
+    transformRequest: config.transformRequest ?? defaults.transformRequest,
+    transformResponse: config.transformResponse ?? defaults.transformResponse
   };
 }
 
@@ -215,6 +220,45 @@ function sleep(ms: number): Promise<void> {
   return ms > 0 ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
+/**
+ * Wrap a FetchAdapterResponse with download progress tracking using a counting TransformStream.
+ */
+function wrapDownloadProgress(
+  response: FetchAdapterResponse,
+  onDownloadProgress: DownloadProgressHandler
+): FetchAdapterResponse {
+  const body = response.body;
+  if (!body) return response;
+
+  const contentLength = response.headers.get('content-length');
+  const total = contentLength ? parseInt(contentLength, 10) : 0;
+  const lengthComputable = total > 0;
+
+  let loaded = 0;
+  const transform = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      loaded += chunk.byteLength;
+      onDownloadProgress({
+        loaded,
+        total,
+        progress: lengthComputable ? Math.round((loaded / total) * 100) : 0,
+        lengthComputable
+      });
+      controller.enqueue(chunk);
+    }
+  });
+
+  const countedStream = body.pipeThrough(transform);
+
+  return {
+    ...response,
+    body: countedStream,
+    text: () => new Response(countedStream).text(),
+    blob: () => new Response(countedStream).blob(),
+    arrayBuffer: () => new Response(countedStream).arrayBuffer()
+  };
+}
+
 // ============================================================
 //  Process Response (响应处理 — 业务逻辑层)
 // ============================================================
@@ -330,7 +374,6 @@ export function resolveDefaults(defaults: CreateFetchDefaults): ResolvedFetchReq
     retry: defaults.retry,
     credentials: defaults.credentials,
     mode: defaults.mode,
-    cache: defaults.cache,
     redirect: defaults.redirect,
     referrer: defaults.referrer,
     referrerPolicy: defaults.referrerPolicy,
@@ -338,11 +381,15 @@ export function resolveDefaults(defaults: CreateFetchDefaults): ResolvedFetchReq
     keepalive: defaults.keepalive,
     adapter: defaults.adapter,
     onUploadProgress: defaults.onUploadProgress,
+    onDownloadProgress: defaults.onDownloadProgress,
     ignoreResponseError: defaults.ignoreResponseError,
+    requestCache: defaults.requestCache,
     onRequest: defaults.onRequest as any,
     onRequestError: defaults.onRequestError as any,
     onResponse: defaults.onResponse as any,
-    onResponseError: defaults.onResponseError as any
+    onResponseError: defaults.onResponseError as any,
+    transformRequest: defaults.transformRequest,
+    transformResponse: defaults.transformResponse
   } as ResolvedFetchRequestConfig;
 }
 
@@ -377,16 +424,19 @@ export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<Fet
   // 3. Build headers (clone)
   const headers = new Headers(config.headers);
 
-  // 4. Serialize body
-  const { body, duplex } = serializeBody(config.data, config.method, headers);
+  // 4. Transform request data (if configured)
+  const requestData = config.transformRequest ? config.transformRequest(config.data, config) : config.data;
 
-  // 5. Timeout signal
+  // 5. Serialize body
+  const { body, duplex } = serializeBody(requestData, config.method, headers);
+
+  // 6. Timeout signal
   const { signal, isTimeout } = createTimeoutSignal(config.timeout, config.signal);
 
-  // 6. Retry options
+  // 7. Retry options
   const retryOpts = createRetryOptions(config.retry);
 
-  // 7. Fetch with retry
+  // 8. Fetch with retry
   // When onUploadProgress is set (and no custom adapter), auto-switch to XHR adapter
   // so that upload progress events are available (native fetch does not support them).
   let adapter = config.adapter ?? defaultAdapter;
@@ -410,7 +460,7 @@ export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<Fet
       if (duplex) requestInit.duplex = duplex;
       if (config.credentials !== undefined) requestInit.credentials = config.credentials;
       if (config.mode !== undefined) requestInit.mode = config.mode;
-      if (config.cache !== undefined) requestInit.cache = config.cache;
+      if (config.requestCache !== undefined) requestInit.cache = config.requestCache;
       if (config.redirect !== undefined) requestInit.redirect = config.redirect;
       if (config.referrer !== undefined) requestInit.referrer = config.referrer;
       if (config.referrerPolicy !== undefined) requestInit.referrerPolicy = config.referrerPolicy;
@@ -460,8 +510,18 @@ export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<Fet
       throw error;
     }
 
-    // 8. Parse response body
-    const data = await parseResponseBody(nativeResponse, config.responseType, config.parseResponse);
+    // 9. Wrap with download progress if configured
+    if (config.onDownloadProgress && nativeResponse.body) {
+      nativeResponse = wrapDownloadProgress(nativeResponse, config.onDownloadProgress);
+    }
+
+    // 10. Parse response body
+    let data = await parseResponseBody(nativeResponse, config.responseType, config.parseResponse);
+
+    // 11. Transform response data (if configured)
+    if (config.transformResponse && data !== undefined && data !== null) {
+      data = config.transformResponse(data, config);
+    }
 
     const fetchResponse: FetchResponse = {
       data,
@@ -472,12 +532,12 @@ export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<Fet
       request
     };
 
-    // 9. Call onResponse hook (transport layer)
+    // 12. Call onResponse hook (transport layer)
     context.response = fetchResponse;
     context.error = undefined;
     await callHooks(context, config.onResponse);
 
-    // 10. Check validateStatus (unless ignoreResponseError)
+    // 13. Check validateStatus (unless ignoreResponseError)
     if (!config.ignoreResponseError) {
       const validateStatus = config.validateStatus ?? isHttpSuccess;
       if (!validateStatus(nativeResponse.status)) {

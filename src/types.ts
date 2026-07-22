@@ -153,6 +153,20 @@ export interface UploadProgressEvent {
  */
 export type UploadProgressHandler = (event: UploadProgressEvent) => void;
 
+/**
+ * Download progress event — structurally identical to {@link UploadProgressEvent}.
+ *
+ * 下载进度事件 —— 与 {@link UploadProgressEvent} 结构相同。
+ */
+export type DownloadProgressEvent = UploadProgressEvent;
+
+/**
+ * Download progress handler.
+ *
+ * 下载进度回调函数。
+ */
+export type DownloadProgressHandler = UploadProgressHandler;
+
 // ============================================================
 //  Fetch Adapter (Fetch 适配器 — 可插拔的底层传输层)
 // ============================================================
@@ -264,7 +278,7 @@ export interface RetryOptions {
  */
 export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omit<
   RequestInit,
-  'method' | 'headers' | 'body' | 'signal'
+  'method' | 'headers' | 'body' | 'signal' | 'cache'
 > {
   baseURL?: string;
   url?: string;
@@ -286,6 +300,11 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omi
    */
   getFileName?: (response: FetchResponse) => string;
   retry?: RetryOptions;
+  /**
+   * Native fetch cache mode (原生 fetch 缓存模式,对应 RequestInit.cache)
+   * @default undefined (browser default)
+   */
+  requestCache?: RequestCache;
   /**
    * Custom fetch adapter — pluggable HTTP transport.
    *
@@ -341,6 +360,28 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omi
    */
   onUploadProgress?: UploadProgressHandler;
   /**
+   * Download progress callback.
+   *
+   * Wraps the response body in a counting `TransformStream` so that each chunk
+   * downloaded triggers the callback. Uses `Content-Length` for `total` when
+   * available.
+   *
+   * 下载进度回调。将响应体包装为计数的 `TransformStream`,每个 chunk 下载时触发回调。
+   * 有 `Content-Length` 时用于计算 `total`。
+   *
+   * @example
+   * ```ts
+   * await request.get('/large-file', {
+   *   responseType: 'blob',
+   *   onDownloadProgress: ({ progress, loaded, lengthComputable }) => {
+   *     if (lengthComputable) console.log(`Download: ${progress}%`);
+   *     else console.log(`Downloaded ${loaded} bytes`);
+   *   }
+   * });
+   * ```
+   */
+  onDownloadProgress?: DownloadProgressHandler;
+  /**
    * Whether to ignore response errors (4xx / 5xx) and return the response instead of throwing.
    *
    * When `true`, `validateStatus` is skipped and `onResponseError` is **not** called.
@@ -384,6 +425,20 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omi
    * 响应状态码错误(failed `validateStatus`)时调用的钩子。支持单个函数或数组。
    */
   onResponseError?: FetchHook;
+
+  /**
+   * Transform request data before serialization (e.g., camelCase → snake_case).
+   *
+   * 序列化前转换请求数据(如 camelCase → snake_case)。
+   */
+  transformRequest?: (data: any, config: ResolvedFetchRequestConfig) => any;
+
+  /**
+   * Transform response data after parsing (e.g., snake_case → camelCase).
+   *
+   * 解析后转换响应数据(如 snake_case → camelCase)。
+   */
+  transformResponse?: (data: any, config: ResolvedFetchRequestConfig) => any;
 }
 
 /**
