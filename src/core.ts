@@ -67,20 +67,17 @@ function getFileData(response: FetchResponse, getFileName?: (response: FetchResp
  */
 export function createCommonRequest<
   ResponseData = any,
-  ApiData = ResponseData,
-  State extends Record<string, unknown> = Record<string, unknown>
->(config?: CreateFetchDefaults, options?: RequestOption<ResponseData, ApiData, State>) {
-  const opts = createDefaultOptions<ResponseData, ApiData, State>(
-    options || ({} as RequestOption<ResponseData, ApiData, State>)
+  ApiData = ResponseData
+>(config?: CreateFetchDefaults, options?: RequestOption<ResponseData, ApiData>) {
+  const opts = createDefaultOptions<ResponseData, ApiData>(
+    options || ({} as RequestOption<ResponseData, ApiData>)
   );
 
   const fetchConfig = createFetchConfig(config);
 
-  const instance: FetchInstance = createFetchInstance<ResponseData, State>(fetchConfig, opts);
+  const instance: FetchInstance = createFetchInstance<ResponseData>(fetchConfig, opts);
 
-  const state: State = (opts.defaultState || {}) as State;
-
-  return { instance, opts, state };
+  return { instance, opts };
 }
 
 // ============================================================
@@ -126,13 +123,12 @@ export function createCommonRequest<
  */
 export function createRequest<
   ResponseData = any,
-  ApiData = ResponseData,
-  State extends Record<string, unknown> = Record<string, unknown>
+  ApiData = ResponseData
 >(
   config?: CreateFetchDefaults,
-  options?: RequestOption<ResponseData, ApiData, State>
-): RequestInstance<ApiData, State> {
-  const { instance, opts, state } = createCommonRequest<ResponseData, ApiData, State>(config, options);
+  options?: RequestOption<ResponseData, ApiData>
+): RequestInstance<ApiData> {
+  const { instance, opts } = createCommonRequest<ResponseData, ApiData>(config, options);
 
   const request = async function request<T extends ApiData = ApiData, R extends ResponseType = 'json'>(conf: any) {
     const response: FetchResponse<ResponseData> = await instance(conf);
@@ -143,7 +139,7 @@ export function createRequest<
     }
 
     return resolveRequestData(response, responseType, conf.getFileName) as MappedType<R, T>;
-  } as RequestInstance<ApiData, State>;
+  } as RequestInstance<ApiData>;
 
   request.raw = async function raw<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     conf: any
@@ -198,10 +194,8 @@ export function createRequest<
     return request({ ...conf, url, method: 'PATCH', data });
   };
 
-  request.state = state;
+  request.state = instance.enhancedState;
   request.instance = instance;
-  request.clearCache = () => instance.clearCache();
-  request.deleteCache = (key: string) => instance.deleteCache(key);
 
   return request;
 }
@@ -240,13 +234,12 @@ export function createRequest<
  */
 export function createFlatRequest<
   ResponseData = any,
-  ApiData = ResponseData,
-  State extends Record<string, unknown> = Record<string, unknown>
+  ApiData = ResponseData
 >(
   config?: CreateFetchDefaults,
-  options?: RequestOption<ResponseData, ApiData, State>
-): FlatRequestInstance<ResponseData, ApiData, State> {
-  const { instance, opts, state } = createCommonRequest<ResponseData, ApiData, State>(config, options);
+  options?: RequestOption<ResponseData, ApiData>
+): FlatRequestInstance<ResponseData, ApiData> {
+  const { instance, opts } = createCommonRequest<ResponseData, ApiData>(config, options);
 
   const flatRequest = async function flatRequest<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     conf: any
@@ -270,7 +263,7 @@ export function createFlatRequest<
         response: error.response as FetchResponse<ResponseData> | undefined
       } as FlatResponseData<ResponseData, MappedType<R, T>>;
     }
-  } as FlatRequestInstance<ResponseData, ApiData, State>;
+  } as FlatRequestInstance<ResponseData, ApiData>;
 
   flatRequest.raw = async function raw<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     conf: any
@@ -337,10 +330,8 @@ export function createFlatRequest<
     return flatRequest({ ...conf, url, method: 'PATCH', data });
   };
 
-  flatRequest.state = state;
+  flatRequest.state = instance.enhancedState;
   flatRequest.instance = instance;
-  flatRequest.clearCache = () => instance.clearCache();
-  flatRequest.deleteCache = (key: string) => instance.deleteCache(key);
 
   return flatRequest;
 }

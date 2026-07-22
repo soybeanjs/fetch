@@ -164,7 +164,6 @@ $fetch.native('https://example.com');
 | `isBackendSuccess` | `Function` | 是   | 判断后端业务逻辑是否成功                                                               |
 | `onBackendFail`    | `Function` | 否   | 后端业务失败回调,如处理 token 过期。返回新 `FetchResponse` 可触发重试,新响应会再次校验 |
 | `onError`          | `Function` | 否   | 请求错误处理,如显示错误提示                                                            |
-| `defaultState`     | `Object`   | 否   | 默认状态对象                                                                           |
 | `backendErrorMsg`  | `string`   | 否   | 后端错误消息,用于构造 [`BackendError`](#错误判别)                                      |
 
 > 业务错误会以 `BackendError` 实例(继承自 `FetchError`,`error.code === 'BACKEND_ERROR'`)形式抛出,
@@ -381,34 +380,27 @@ const stream = await request({
 
 ### 3. 状态管理
 
-在请求实例中共享状态:
+`request.state` 返回 `EnhancedState`,包含内置运行时状态(cache、loading、dedupe 等)和用户自定义扩展状态 `extend`:
 
 ```typescript
-interface CustomState {
-  token: string;
-  userId: number;
-}
-
 const request = createRequest(
   { baseURL: 'https://api.example.com' },
   {
-    defaultState: {
-      token: '',
-      userId: 0
-    } as CustomState
     // ...其他配置
+    onRequest: config => {
+      config.headers.set('Authorization', `Bearer ${request.state.token}`);
+      return config;
+    }
   }
 );
 
-// 访问和修改状态
+// 用户自定义状态 —— 直接在 state 上读写
 request.state.token = 'new-token';
 request.state.userId = 123;
 
-// 在钩子中使用状态
-onRequest: config => {
-  config.headers.set('Authorization', `Bearer ${request.state.token}`);
-  return config;
-};
+// 内置运行时状态也可访问
+request.state.loading.count;   // 当前并发请求数
+request.state.cache.size;      // 缓存条目数
 ```
 
 ### 4. 自动重试
@@ -1268,10 +1260,10 @@ async function uploadFile(file: File) {
 创建标准请求实例。
 
 ```typescript
-function createRequest<ResponseData, ApiData, State>(
+function createRequest<ResponseData, ApiData>(
   config?: FetchRequestConfig,
-  options?: RequestOption<ResponseData, ApiData, State>
-): RequestInstance<ApiData, State>;
+  options?: RequestOption<ResponseData, ApiData>
+): RequestInstance<ApiData>;
 ```
 
 ### createFlatRequest
@@ -1279,10 +1271,10 @@ function createRequest<ResponseData, ApiData, State>(
 创建扁平化请求实例,不抛出异常。
 
 ```typescript
-function createFlatRequest<ResponseData, ApiData, State>(
+function createFlatRequest<ResponseData, ApiData>(
   config?: FetchRequestConfig,
-  options?: RequestOption<ResponseData, ApiData, State>
-): FlatRequestInstance<ResponseData, ApiData, State>;
+  options?: RequestOption<ResponseData, ApiData>
+): FlatRequestInstance<ResponseData, ApiData>;
 ```
 
 ### createFetch / $fetch

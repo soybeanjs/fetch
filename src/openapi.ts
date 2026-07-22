@@ -339,7 +339,7 @@ export function createTypedClient<
   Prefix extends string = '',
   Field extends string = ''
 >(
-  requestInstance: RequestInstance<any, any>,
+  requestInstance: RequestInstance<any>,
   prefix: Prefix = '' as Prefix
 ): TypedClient<PathsRemovedPrefix<Paths, Prefix>, Field> {
   const methods: readonly HttpMethod[] = ['get', 'post', 'put', 'delete', 'patch', 'options', 'head', 'trace'];
@@ -398,7 +398,7 @@ export function createFlatTypedClient<
   Prefix extends string = '',
   Field extends string = ''
 >(
-  flatRequestInstance: FlatRequestInstance<any, any, any>,
+  flatRequestInstance: FlatRequestInstance<any, any>,
   prefix: Prefix = '' as Prefix
 ): FlatTypedClient<PathsRemovedPrefix<Paths, Prefix>, Field> {
   const methods: readonly HttpMethod[] = ['get', 'post', 'put', 'delete', 'patch', 'options', 'head', 'trace'];

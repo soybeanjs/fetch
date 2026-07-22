@@ -322,9 +322,9 @@ async function processResponse<ResponseData>(
  *
  * On error, `onError` is called and the error is re-thrown.
  */
-export function createFetchInstance<ResponseData, State extends Record<string, unknown>>(
+export function createFetchInstance<ResponseData>(
   defaults: CreateFetchDefaults,
-  opts: RequestOption<ResponseData, any, State>
+  opts: RequestOption<ResponseData, any>
 ): FetchInstance {
   const resolvedDefaults = resolveDefaults(defaults);
   const enhancedState = createEnhancedState();
@@ -355,6 +355,7 @@ export function createFetchInstance<ResponseData, State extends Record<string, u
   } as FetchInstance;
 
   instance.defaults = resolvedDefaults;
+  instance.enhancedState = enhancedState;
   instance.clearCache = () => clearCache(enhancedState);
   instance.deleteCache = (key: string) => deleteCache(enhancedState, key);
   return instance;

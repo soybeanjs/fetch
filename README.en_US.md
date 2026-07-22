@@ -167,7 +167,6 @@ $fetch.native('https://example.com');
 | `isBackendSuccess`| `Function` | Yes      | Check if backend business logic succeeded                                                    |
 | `onBackendFail`   | `Function` | No       | Backend failure callback, e.g. token refresh. Return a new `FetchResponse` to retry          |
 | `onError`         | `Function` | No       | Request error handler, e.g. show error toast                                                 |
-| `defaultState`    | `Object`   | No       | Default state object                                                                         |
 | `backendErrorMsg` | `string`   | No       | Backend error message for constructing [`BackendError`](#error-identification)               |
 
 > Business errors (failed `isBackendSuccess`) are thrown as `BackendError` instances (extends `FetchError`, `error.code === 'BACKEND_ERROR'`).
@@ -384,34 +383,27 @@ Supported response types:
 
 ### 3. State Management
 
-Share state across request instances:
+`request.state` returns `EnhancedState`, which includes built-in runtime state (cache, loading, dedupe, etc.) and a user-defined `extend` field for custom state:
 
 ```typescript
-interface CustomState {
-  token: string;
-  userId: number;
-}
-
 const request = createRequest(
   { baseURL: 'https://api.example.com' },
   {
-    defaultState: {
-      token: '',
-      userId: 0
-    } as CustomState,
     // ...other options
+    onRequest: config => {
+      config.headers.set('Authorization', `Bearer ${request.state.token}`);
+      return config;
+    }
   }
 );
 
-// Access and modify state
+// Custom state — read and write directly on state
 request.state.token = 'new-token';
 request.state.userId = 123;
 
-// Use state in hooks
-onRequest: config => {
-  config.headers.set('Authorization', `Bearer ${request.state.token}`);
-  return config;
-}
+// Built-in runtime state is also accessible
+request.state.loading.count;   // current concurrent request count
+request.state.cache.size;      // cache entry count
 ```
 
 ### 4. Auto Retry
@@ -1146,10 +1138,10 @@ async function uploadFile(file: File) {
 Create a standard request instance.
 
 ```typescript
-function createRequest<ResponseData, ApiData, State>(
+function createRequest<ResponseData, ApiData>(
   config?: FetchRequestConfig,
-  options?: RequestOption<ResponseData, ApiData, State>
-): RequestInstance<ApiData, State>;
+  options?: RequestOption<ResponseData, ApiData>
+): RequestInstance<ApiData>;
 ```
 
 ### createFlatRequest
@@ -1157,10 +1149,10 @@ function createRequest<ResponseData, ApiData, State>(
 Create a flat request instance that never throws.
 
 ```typescript
-function createFlatRequest<ResponseData, ApiData, State>(
+function createFlatRequest<ResponseData, ApiData>(
   config?: FetchRequestConfig,
-  options?: RequestOption<ResponseData, ApiData, State>
-): FlatRequestInstance<ResponseData, ApiData, State>;
+  options?: RequestOption<ResponseData, ApiData>
+): FlatRequestInstance<ResponseData, ApiData>;
 ```
 
 ### createFetch / $fetch

@@ -16,9 +16,9 @@ import type { CreateFetchDefaults, RequestOption, RetryOptions } from './types';
  * - `backendErrorMsg` defaults to a standard message if not provided
  * - `transform` defaults to extracting `response.data`
  */
-export function createDefaultOptions<ResponseData, ApiData, State extends Record<string, unknown>>(
-  options: RequestOption<ResponseData, ApiData, State>
-): RequestOption<ResponseData, ApiData, State> {
+export function createDefaultOptions<ResponseData, ApiData>(
+  options: RequestOption<ResponseData, ApiData>
+): RequestOption<ResponseData, ApiData> {
   return {
     ...options,
     backendErrorMsg: options.backendErrorMsg ?? 'Backend request error, please check `isBackendSuccess`.',

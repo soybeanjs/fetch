@@ -48,6 +48,7 @@ export interface EnhancedState {
   debounce: Map<string, DebounceEntry>;
   throttle: Map<string, number>;
   auth: { refreshing: Promise<string | null> | null };
+  [key: string]: any;
 }
 
 // ============================================================

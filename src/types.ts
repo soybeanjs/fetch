@@ -1,4 +1,5 @@
 import type { FetchError } from './error';
+import type { EnhancedState } from './enhanced';
 
 // ============================================================
 //  Content Types & HTTP Methods (内容类型与 HTTP 方法)
@@ -656,11 +657,8 @@ export type CreateFetchDefaults = FetchRequestConfig;
 
 export interface RequestOption<
   ResponseData = any,
-  ApiData = ResponseData,
-  State extends Record<string, unknown> = Record<string, unknown>
+  ApiData = ResponseData
 > {
-  /** The default state (默认状态) */
-  defaultState?: State;
   /**
    * transform the response data to the api data (转换响应数据为接口数据)
    *
@@ -730,6 +728,8 @@ export interface FetchInstance {
   (config: FetchRequestConfig): Promise<FetchResponse>;
   /** The resolved default config (解析后的默认配置) */
   defaults: ResolvedFetchRequestConfig;
+  /** The underlying enhanced state (底层增强状态) */
+  enhancedState: EnhancedState;
   /** Clear all cached responses (清除所有缓存响应) */
   clearCache: () => void;
   /** Delete a specific cache entry by key (按 key 删除特定缓存条目) */
@@ -740,9 +740,9 @@ export interface FetchInstance {
 //  Request Instances (请求实例)
 // ============================================================
 
-export interface RequestInstanceCommon<State extends Record<string, unknown>> {
-  /** you can set custom state in the request instance */
-  state: State;
+export interface RequestInstanceCommon {
+  /** The enhanced state, including runtime state and user extend state (增强状态，含运行时状态与用户扩展状态) */
+  state: EnhancedState;
   /**
    * The underlying fetch instance (底层 fetch 实例)
    *
@@ -753,9 +753,8 @@ export interface RequestInstanceCommon<State extends Record<string, unknown>> {
 
 /** The request instance */
 export interface RequestInstance<
-  ApiData = any,
-  State extends Record<string, unknown> = Record<string, unknown>
-> extends RequestInstanceCommon<State> {
+  ApiData = any
+> extends RequestInstanceCommon {
   <T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     config: FetchRequestConfig<R>
   ): Promise<MappedType<R, T>>;
@@ -814,9 +813,8 @@ export type FlatResponseData<ResponseData, ApiData> =
 
 export interface FlatRequestInstance<
   ResponseData = any,
-  ApiData = ResponseData,
-  State extends Record<string, unknown> = Record<string, unknown>
-> extends RequestInstanceCommon<State> {
+  ApiData = ResponseData
+> extends RequestInstanceCommon {
   <T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     config: FetchRequestConfig<R>
   ): Promise<FlatResponseData<ResponseData, MappedType<R, T>>>;
