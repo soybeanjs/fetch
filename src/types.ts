@@ -46,7 +46,7 @@ interface ResponseMap {
   document: Document;
 }
 
-export type ResponseType = keyof ResponseMap | 'json';
+export type ResponseType = keyof ResponseMap | 'json' | 'auto';
 
 export type MappedType<R extends ResponseType, JsonType = any> = R extends keyof ResponseMap
   ? ResponseMap[R]
@@ -85,6 +85,10 @@ export interface IFetchError<T = any> {
   data?: T;
   status?: number;
   statusText?: string;
+  /** Alias for `status` (Node.js compatibility) */
+  statusCode?: number;
+  /** Alias for `statusText` (Node.js compatibility) */
+  statusMessage?: string;
 }
 
 /**
@@ -124,8 +128,18 @@ export class FetchError<T = any> extends Error implements IFetchError<T> {
     return this.response?.status;
   }
 
+  /** Alias for `status` (Node.js compatibility) */
+  get statusCode(): number | undefined {
+    return this.response?.status;
+  }
+
   /** Convenience getter for `response?.statusText` */
   get statusText(): string | undefined {
+    return this.response?.statusText;
+  }
+
+  /** Alias for `statusText` (Node.js compatibility) */
+  get statusMessage(): string | undefined {
     return this.response?.statusText;
   }
 
@@ -155,6 +169,127 @@ export class BackendError<ResponseData = any> extends FetchError<ResponseData> {
 }
 
 // ============================================================
+//  Fetch Context & Hooks (传输层上下文与钩子 — 对标 ofetch)
+// ============================================================
+
+/**
+ * Fetch context — passed to transport-layer hooks.
+ *
+ * Hooks can mutate `context.options` (e.g. add headers) and `context.response.data`
+ * (e.g. transform response body). This mirrors ofetch's `FetchContext` design.
+ *
+ * Fetch 上下文 —— 传递给传输层钩子。
+ * 钩子可以修改 `context.options`(如添加请求头)和 `context.response.data`(如转换响应体)。
+ */
+export interface FetchContext<T = any> {
+  /** The request URL (请求 URL) */
+  request: string;
+  /** The resolved request options (解析后的请求配置) */
+  options: ResolvedFetchRequestConfig;
+  /** The response — available in onResponse / onResponseError / onRequestError (响应对象) */
+  response?: FetchResponse<T>;
+  /** The error — available in onRequestError / onResponseError (错误对象) */
+  error?: Error;
+}
+
+/** A single value or an array of values (单个值或数组) */
+export type MaybeArray<T> = T | T[];
+
+/** A single fetch hook function (单个 fetch 钩子函数) */
+export type FetchHookFn<C extends FetchContext = FetchContext> = (context: C) => void | Promise<void>;
+
+/** A fetch hook — single function or array of functions (fetch 钩子 —— 单个函数或函数数组) */
+export type FetchHook<C extends FetchContext = FetchContext> = MaybeArray<FetchHookFn<C>>;
+
+// ============================================================
+//  Fetch Adapter (Fetch 适配器 — 可插拔的底层传输层)
+// ============================================================
+
+/**
+ * Adapter response — the subset of the native `Response` API that the library actually uses.
+ *
+ * Custom adapters (e.g. for uniapp, WeChat mini-programs) only need to implement this interface;
+ * they do **not** need to create real `Response` objects.
+ *
+ * 适配器响应 —— 库实际使用的原生 `Response` API 子集。
+ * 自定义适配器（如 uniapp、微信小程序）只需实现此接口,无需创建真实的 `Response` 对象。
+ */
+export interface FetchAdapterResponse {
+  /** HTTP status code */
+  readonly status: number;
+  /** HTTP status text */
+  readonly statusText: string;
+  /** Response headers */
+  readonly headers: Headers;
+  /** Response body stream, or `null` if not available */
+  readonly body: ReadableStream<Uint8Array> | null;
+  /** Read the response body as text */
+  text(): Promise<string>;
+  /** Read the response body as a Blob */
+  blob(): Promise<Blob>;
+  /** Read the response body as an ArrayBuffer */
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+/**
+ * Request init passed to the adapter.
+ *
+ * The library always provides `method` and `headers`; other fields are optional
+ * and mirror the native `RequestInit` (plus `duplex` for streaming bodies).
+ *
+ * 传递给适配器的请求初始化对象。
+ * 库始终提供 `method` 和 `headers`,其他字段可选,与原生 `RequestInit` 一致(额外支持 `duplex`)。
+ */
+export interface FetchAdapterInit {
+  method: string;
+  headers: Headers;
+  body?: BodyInit | null;
+  signal?: AbortSignal | null;
+  credentials?: RequestCredentials;
+  mode?: RequestMode;
+  cache?: RequestCache;
+  redirect?: RequestRedirect;
+  referrer?: string;
+  referrerPolicy?: ReferrerPolicy;
+  integrity?: string;
+  keepalive?: boolean;
+  duplex?: 'half';
+}
+
+/**
+ * Fetch adapter — a pluggable HTTP transport function.
+ *
+ * The default adapter uses native `fetch()`. Custom adapters can be provided via the
+ * `adapter` config field to support platforms where `fetch` is unavailable (e.g. uniapp,
+ * WeChat mini-programs, React Native).
+ *
+ * The adapter is **transport-only**: it receives the finalised URL and request init, and
+ * returns an {@link FetchAdapterResponse}. The library handles everything else — retry,
+ * timeout, response parsing, and business-logic hooks.
+ *
+ * Fetch 适配器 —— 可插拔的 HTTP 传输函数。
+ *
+ * 默认适配器使用原生 `fetch()`。通过 `adapter` 配置字段可传入自定义适配器,以支持
+ * `fetch` 不可用的平台(如 uniapp、微信小程序、React Native)。
+ *
+ * 适配器仅负责传输层:接收最终 URL 和请求初始化对象,返回 {@link FetchAdapterResponse}。
+ * 库负责其余所有逻辑 —— 重试、超时、响应解析、业务钩子。
+ *
+ * @example
+ * ```ts
+ * // Use a custom adapter for uniapp
+ * import { createRequest } from '@soybeanjs/fetch';
+ * import { uniappAdapter } from 'my-uniapp-adapter';
+ *
+ * const request = createRequest({
+ *   baseURL: 'https://api.example.com',
+ *   adapter: uniappAdapter
+ * });
+ * ```
+ */
+export type FetchAdapter = (url: string, init: FetchAdapterInit) => Promise<FetchAdapterResponse>;
+
+// ============================================================
 //  Request Config (请求配置)
 // ============================================================
 
@@ -175,8 +310,10 @@ export interface RetryOptions {
  *
  * 请求配置 —— 相当于 AxiosRequestConfig 的 fetch 版本。
  */
-export interface FetchRequestConfig<R extends ResponseType = 'json'>
-  extends Omit<RequestInit, 'method' | 'headers' | 'body' | 'signal'> {
+export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omit<
+  RequestInit,
+  'method' | 'headers' | 'body' | 'signal'
+> {
   baseURL?: string;
   url?: string;
   method?: HttpMethod | string;
@@ -197,6 +334,61 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'>
    */
   getFileName?: (response: FetchResponse) => string;
   retry?: RetryOptions;
+  /**
+   * Custom fetch adapter — pluggable HTTP transport.
+   *
+   * When omitted, the default adapter (native `fetch()`) is used. Provide a custom adapter
+   * to support platforms like uniapp, WeChat mini-programs, etc.
+   *
+   * 自定义 fetch 适配器 —— 可插拔的 HTTP 传输层。
+   *
+   * 省略时使用默认适配器(原生 `fetch()`)。传入自定义适配器可支持 uniapp、微信小程序等平台。
+   */
+  adapter?: FetchAdapter;
+  /**
+   * Whether to ignore response errors (4xx / 5xx) and return the response instead of throwing.
+   *
+   * When `true`, `validateStatus` is skipped and `onResponseError` is **not** called.
+   * Useful when you want to handle error status codes yourself.
+   *
+   * 是否忽略响应错误(4xx / 5xx),返回响应而非抛出异常。
+   *
+   * 为 `true` 时跳过 `validateStatus` 检查,且**不会**调用 `onResponseError`。
+   * 适用于需要自行处理错误状态码的场景。
+   *
+   * @default false
+   */
+  ignoreResponseError?: boolean;
+  // ----- Transport-layer hooks (传输层钩子,对标 ofetch) -----
+  /**
+   * Hook called before the request is sent. Can be a single function or an array.
+   *
+   * Hooks receive a mutable {@link FetchContext} — modify `context.options` to change the request.
+   *
+   * 请求发送前调用的钩子。支持单个函数或数组。钩子接收可变的 {@link FetchContext} —— 修改 `context.options` 可改变请求。
+   */
+  onRequest?: FetchHook;
+  /**
+   * Hook called when the request fails (network error, timeout, abort). Can be a single function or an array.
+   *
+   * 请求失败时调用的钩子(网络错误、超时、取消)。支持单个函数或数组。
+   */
+  onRequestError?: FetchHook;
+  /**
+   * Hook called after the response is received and parsed. Can be a single function or an array.
+   *
+   * Hooks can mutate `context.response.data` to transform the response body.
+   *
+   * 响应接收并解析后调用的钩子。支持单个函数或数组。
+   * 钩子可修改 `context.response.data` 来转换响应体。
+   */
+  onResponse?: FetchHook;
+  /**
+   * Hook called when the response has an error status (failed `validateStatus`). Can be a single function or an array.
+   *
+   * 响应状态码错误(failed `validateStatus`)时调用的钩子。支持单个函数或数组。
+   */
+  onResponseError?: FetchHook;
 }
 
 /**
@@ -205,8 +397,10 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'>
  *
  * 解析后的请求配置 —— 合并默认值与单次请求配置后,所有字段保证存在。
  */
-export interface ResolvedFetchRequestConfig<R extends ResponseType = 'json'>
-  extends Omit<FetchRequestConfig<R>, 'url' | 'method' | 'headers' | 'responseType'> {
+export interface ResolvedFetchRequestConfig<R extends ResponseType = 'json'> extends Omit<
+  FetchRequestConfig<R>,
+  'url' | 'method' | 'headers' | 'responseType'
+> {
   url: string;
   method: string;
   headers: Headers;
@@ -244,9 +438,7 @@ export interface RequestOption<
    *
    * @param config resolved request config (解析后的请求配置)
    */
-  onRequest?: (
-    config: ResolvedFetchRequestConfig
-  ) => ResolvedFetchRequestConfig | Promise<ResolvedFetchRequestConfig>;
+  onRequest?: (config: ResolvedFetchRequestConfig) => ResolvedFetchRequestConfig | Promise<ResolvedFetchRequestConfig>;
   /**
    * The hook to check backend response is success or not (检查后端响应是否成功的钩子)
    *
@@ -318,8 +510,10 @@ export interface RequestInstanceCommon<State extends Record<string, unknown>> {
 }
 
 /** The request instance */
-export interface RequestInstance<ApiData = any, State extends Record<string, unknown> = Record<string, unknown>>
-  extends RequestInstanceCommon<State> {
+export interface RequestInstance<
+  ApiData = any,
+  State extends Record<string, unknown> = Record<string, unknown>
+> extends RequestInstanceCommon<State> {
   <T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     config: FetchRequestConfig<R>
   ): Promise<MappedType<R, T>>;
@@ -432,7 +626,54 @@ export type SimpleMethodConfig<R extends ResponseType = 'json'> = Omit<FetchRequ
 /**
  * Config for convenience methods with a request body (POST / PUT / PATCH).
  */
-export type BodyMethodConfig<R extends ResponseType = 'json'> = Omit<
-  FetchRequestConfig<R>,
-  'url' | 'method' | 'data'
->;
+export type BodyMethodConfig<R extends ResponseType = 'json'> = Omit<FetchRequestConfig<R>, 'url' | 'method' | 'data'>;
+
+// ============================================================
+//  $Fetch Interface ($Fetch 接口 — 对标 ofetch)
+// ============================================================
+
+/**
+ * `$fetch` — a lightweight, ofetch-compatible fetch client.
+ *
+ * Created via {@link createFetch}. Supports transport-layer hooks, retry, timeout,
+ * and auto response-type detection. Does **not** include business-logic hooks
+ * (use {@link createRequest} / {@link createFlatRequest} for that).
+ *
+ * `$fetch` —— 轻量级、兼容 ofetch 的 fetch 客户端。
+ *
+ * 通过 {@link createFetch} 创建。支持传输层钩子、重试、超时、响应类型自动检测。
+ * **不**包含业务逻辑钩子(请使用 {@link createRequest} / {@link createFlatRequest})。
+ */
+export interface $Fetch {
+  /**
+   * Perform a request and return the parsed response body.
+   *
+   * @example
+   * ```ts
+   * const data = await $fetch<User>('/api/users/1');
+   * const text = await $fetch('/api/data', { responseType: 'text' });
+   * ```
+   */
+  <T = any, R extends ResponseType = 'json'>(
+    request: string,
+    options?: FetchRequestConfig<R>
+  ): Promise<MappedType<R, T>>;
+  /**
+   * Perform a request and return the full {@link FetchResponse} (without throwing on error status).
+   */
+  raw<T = any, R extends ResponseType = 'json'>(
+    request: string,
+    options?: FetchRequestConfig<R>
+  ): Promise<FetchResponse<MappedType<R, T>>>;
+  /** Direct access to the native `fetch` (直接访问原生 fetch) */
+  native: typeof fetch;
+  /**
+   * Create a new `$fetch` instance with merged defaults.
+   *
+   * @example
+   * ```ts
+   * const apiFetch = $fetch.create({ baseURL: 'https://api.example.com', headers: { 'X-Token': 'xxx' } });
+   * ```
+   */
+  create(defaults: FetchRequestConfig): $Fetch;
+}

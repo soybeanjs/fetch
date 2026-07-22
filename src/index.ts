@@ -1,4 +1,6 @@
 export { createRequest, createFlatRequest, createCommonRequest } from './core';
+export { $fetch, createFetch } from './fetch';
+export { defaultAdapter, createAdapterResponse } from './adapter';
 export { parseContentDisposition, downloadFile } from './shared';
 export { createTypedClient, createFlatTypedClient } from './openapi';
 

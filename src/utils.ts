@@ -1,5 +1,5 @@
 import { NULL_BODY_STATUS_CODES } from './constant';
-import type { ResponseType } from './types';
+import type { FetchContext, FetchHook, ResponseType } from './types';
 
 // ============================================================
 //  URL Utilities (URL 工具)
@@ -187,12 +187,18 @@ export function isJSONSerializable(value: unknown): boolean {
  *
  * 根据 Content-Type 头部检测合适的响应类型。
  */
+// Regex matching ofetch's JSON detection: application/json, application/*+json, etc.
+const JSON_CONTENT_TYPE_RE = /^application\/(?:[\w!#$%&*.^`~-]*\+)?json(;.+)?$/i;
+
 export function detectResponseType(contentType: string | null): ResponseType {
   if (!contentType) return 'json';
 
   const mime = contentType.toLowerCase();
 
-  if (mime.includes('application/json') || mime.includes('+json')) return 'json';
+  // JSON: application/json, application/ld+json, application/vnd.api+json, etc.
+  if (JSON_CONTENT_TYPE_RE.test(mime)) return 'json';
+  // SSE (Server-Sent Events) → stream
+  if (mime.includes('text/event-stream')) return 'stream';
   if (mime.includes('text/html')) return 'document';
   if (mime.includes('text/')) return 'text';
   if (mime.includes('application/xml') || mime.includes('+xml')) return 'document';
@@ -243,4 +249,24 @@ export function mergeHeaders(...sources: (Headers | Record<string, string> | nul
     }
   }
   return merged;
+}
+
+// ============================================================
+//  Hook Utilities (钩子工具)
+// ============================================================
+
+/**
+ * Call a hook (single function or array of functions) with the given context.
+ *
+ * Hooks are called sequentially; async hooks are awaited.
+ *
+ * 使用给定上下文调用钩子(单个函数或函数数组)。
+ * 钩子按顺序调用,异步钩子会被 await。
+ */
+export async function callHooks(context: FetchContext, hooks?: FetchHook): Promise<void> {
+  if (!hooks) return;
+  const fns = Array.isArray(hooks) ? hooks : [hooks];
+  for (const fn of fns) {
+    await fn(context);
+  }
 }

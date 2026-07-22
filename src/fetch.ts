@@ -1,13 +1,29 @@
 import { NULL_BODY_STATUS_CODES } from './constant';
 import { coerceBinaryToJsonResponse, isHttpSuccess } from './shared';
-import { isJSONSerializable, isPayloadMethod, mergeHeaders, resolveURL, serializeParams, toHeaders } from './utils';
+import {
+  callHooks,
+  detectResponseType,
+  isJSONSerializable,
+  isPayloadMethod,
+  mergeHeaders,
+  resolveURL,
+  serializeParams,
+  toHeaders
+} from './utils';
+import { defaultAdapter } from './adapter';
 import { createRetryOptions } from './options';
 import { BackendError as BackendErrorClass, FetchError as FetchErrorClass } from './types';
 import type {
+  $Fetch,
   CreateFetchDefaults,
+  FetchAdapterInit,
+  FetchAdapterResponse,
+  FetchContext,
   FetchError,
   FetchInstance,
+  FetchRequestConfig,
   FetchResponse,
+  MappedType,
   RequestOption,
   ResolvedFetchRequestConfig,
   ResponseType
@@ -18,7 +34,10 @@ import type {
 // ============================================================
 
 /** Merge per-request config with instance defaults. */
-function mergeConfig(defaults: ResolvedFetchRequestConfig, config: Record<string, any>): ResolvedFetchRequestConfig {
+export function mergeConfig(
+  defaults: ResolvedFetchRequestConfig,
+  config: Record<string, any>
+): ResolvedFetchRequestConfig {
   const headers = mergeHeaders(defaults.headers, config.headers);
 
   return {
@@ -33,7 +52,13 @@ function mergeConfig(defaults: ResolvedFetchRequestConfig, config: Record<string
     validateStatus: config.validateStatus ?? defaults.validateStatus ?? isHttpSuccess,
     parseResponse: config.parseResponse ?? defaults.parseResponse,
     getFileName: config.getFileName ?? defaults.getFileName,
-    timeout: config.timeout ?? defaults.timeout
+    timeout: config.timeout ?? defaults.timeout,
+    adapter: config.adapter ?? defaults.adapter,
+    ignoreResponseError: config.ignoreResponseError ?? defaults.ignoreResponseError,
+    onRequest: config.onRequest ?? defaults.onRequest,
+    onRequestError: config.onRequestError ?? defaults.onRequestError,
+    onResponse: config.onResponse ?? defaults.onResponse,
+    onResponseError: config.onResponseError ?? defaults.onResponseError
   };
 }
 
@@ -71,6 +96,11 @@ function serializeBody(data: any, method: string, headers: Headers): { body: Bod
       return { body: data, duplex: 'half' };
     }
     return { body: data as BodyInit };
+  }
+
+  // Node.js Readable stream (has .pipe method) — needs duplex: 'half'
+  if (data && typeof (data as any).pipe === 'function') {
+    return { body: data as BodyInit, duplex: 'half' };
   }
 
   // JSON-serializable values
@@ -134,12 +164,19 @@ function createTimeoutSignal(
 
 /** Parse the response body based on responseType. */
 async function parseResponseBody(
-  response: Response,
+  response: FetchAdapterResponse,
   responseType: ResponseType,
   parseResponse?: (text: string) => any
 ): Promise<any> {
   if (NULL_BODY_STATUS_CODES.has(response.status)) return undefined;
   if (response.body === null) return undefined;
+
+  // Auto-detect response type from content-type header
+  if (responseType === 'auto') {
+    responseType = detectResponseType(response.headers.get('content-type'));
+    // If parseResponse is set, force JSON parsing
+    if (parseResponse) responseType = 'json';
+  }
 
   switch (responseType) {
     case 'json': {
@@ -196,8 +233,9 @@ async function processResponse<ResponseData>(
 
   const responseType: ResponseType = response.config?.responseType || 'json';
 
-  // Non-JSON response types skip isBackendSuccess
-  if (responseType !== 'json') return response;
+  // Non-JSON response types skip isBackendSuccess.
+  // 'auto' is treated like 'json' — the actual type was already resolved during parsing.
+  if (responseType !== 'json' && responseType !== 'auto') return response;
 
   if (opts.isBackendSuccess(response)) return response;
 
@@ -232,148 +270,17 @@ export function createFetchInstance<ResponseData, State extends Record<string, u
   defaults: CreateFetchDefaults,
   opts: RequestOption<ResponseData, any, State>
 ): FetchInstance {
-  // Build resolved default config
-  const resolvedDefaults: ResolvedFetchRequestConfig = {
-    baseURL: defaults.baseURL,
-    url: defaults.url ?? '',
-    method: (defaults.method ?? 'GET').toString().toUpperCase(),
-    headers: toHeaders(defaults.headers),
-    params: defaults.params,
-    data: defaults.data,
-    responseType: defaults.responseType ?? 'json',
-    timeout: defaults.timeout,
-    signal: defaults.signal,
-    validateStatus: defaults.validateStatus ?? isHttpSuccess,
-    paramsSerializer: defaults.paramsSerializer ?? serializeParams,
-    parseResponse: defaults.parseResponse,
-    getFileName: defaults.getFileName,
-    retry: defaults.retry,
-    credentials: defaults.credentials,
-    mode: defaults.mode,
-    cache: defaults.cache,
-    redirect: defaults.redirect,
-    referrer: defaults.referrer,
-    referrerPolicy: defaults.referrerPolicy,
-    integrity: defaults.integrity,
-    keepalive: defaults.keepalive
-  } as ResolvedFetchRequestConfig;
+  const resolvedDefaults = resolveDefaults(defaults);
 
-  /** Raw fetch — no processResponse. */
+  /** Raw fetch — applies business-level onRequest, then delegates to fetchCore. */
   async function fetchRaw(config: ResolvedFetchRequestConfig): Promise<FetchResponse> {
-    // 1. onRequest hook
+    // Business-level onRequest hook (from RequestOption)
     let resolvedConfig = config;
     if (opts.onRequest) {
       const result = await opts.onRequest(config);
       if (result) resolvedConfig = result;
     }
-
-    // 2. Build URL
-    const url = buildURL(resolvedConfig);
-
-    // 3. Build headers (clone)
-    const headers = new Headers(resolvedConfig.headers);
-
-    // 4. Serialize body
-    const { body, duplex } = serializeBody(resolvedConfig.data, resolvedConfig.method, headers);
-
-    // 5. Timeout signal
-    const { signal, isTimeout } = createTimeoutSignal(resolvedConfig.timeout, resolvedConfig.signal);
-
-    // 6. Retry options
-    const retryOpts = createRetryOptions(resolvedConfig.retry);
-
-    // 7. Fetch with retry
-    for (let attempt = 0; attempt <= retryOpts.retries; attempt++) {
-      let nativeResponse: Response;
-      let request: Request;
-
-      try {
-        // Build Request init
-        const requestInit: RequestInit & { duplex?: 'half' } = {
-          method: resolvedConfig.method,
-          headers,
-          body,
-          signal
-        };
-        if (duplex) requestInit.duplex = duplex;
-        if (resolvedConfig.credentials !== undefined) requestInit.credentials = resolvedConfig.credentials;
-        if (resolvedConfig.mode !== undefined) requestInit.mode = resolvedConfig.mode;
-        if (resolvedConfig.cache !== undefined) requestInit.cache = resolvedConfig.cache;
-        if (resolvedConfig.redirect !== undefined) requestInit.redirect = resolvedConfig.redirect;
-        if (resolvedConfig.referrer !== undefined) requestInit.referrer = resolvedConfig.referrer;
-        if (resolvedConfig.referrerPolicy !== undefined) requestInit.referrerPolicy = resolvedConfig.referrerPolicy;
-        if (resolvedConfig.integrity !== undefined) requestInit.integrity = resolvedConfig.integrity;
-        if (resolvedConfig.keepalive !== undefined) requestInit.keepalive = resolvedConfig.keepalive;
-
-        request = new Request(url, requestInit as RequestInit);
-        nativeResponse = await fetch(request);
-      } catch (err) {
-        // Network error or abort
-        const isAbort = err instanceof Error && err.name === 'AbortError';
-        const timeout = isTimeout();
-
-        const error: FetchError = new FetchErrorClass(
-          timeout
-            ? `Request timeout of ${resolvedConfig.timeout}ms exceeded`
-            : (err as Error).message || 'Network Error',
-          {
-            code: timeout ? 'ERR_TIMEOUT' : isAbort ? 'ERR_ABORTED' : 'ERR_NETWORK',
-            config: resolvedConfig,
-            cause: err
-          }
-        );
-
-        // Don't retry on user-initiated abort (non-timeout)
-        if (isAbort && !timeout) throw error;
-
-        if (attempt < retryOpts.retries) {
-          const shouldRetry = await retryOpts.retryCondition(error);
-          if (shouldRetry) {
-            await sleep(retryOpts.retryDelay(attempt + 1, error));
-            continue;
-          }
-        }
-        throw error;
-      }
-
-      // 8. Parse response body
-      const data = await parseResponseBody(nativeResponse, resolvedConfig.responseType, resolvedConfig.parseResponse);
-
-      const fetchResponse: FetchResponse = {
-        data,
-        status: nativeResponse.status,
-        statusText: nativeResponse.statusText,
-        headers: nativeResponse.headers,
-        config: resolvedConfig,
-        request
-      };
-
-      // 9. Check validateStatus
-      const validateStatus = resolvedConfig.validateStatus ?? isHttpSuccess;
-      if (!validateStatus(nativeResponse.status)) {
-        const error: FetchError = new FetchErrorClass(`Request failed with status code ${nativeResponse.status}`, {
-          code: 'ERR_BAD_RESPONSE',
-          config: resolvedConfig,
-          request,
-          response: fetchResponse
-        });
-
-        if (attempt < retryOpts.retries) {
-          const shouldRetry = await retryOpts.retryCondition(error);
-          if (shouldRetry) {
-            await sleep(retryOpts.retryDelay(attempt + 1, error));
-            continue;
-          }
-        }
-        throw error;
-      }
-
-      // Success
-      return fetchResponse;
-    }
-
-    // Should not reach here, but just in case
-    throw new FetchErrorClass('Request failed: max retries exceeded', { config: resolvedConfig });
+    return fetchCore(resolvedConfig);
   }
 
   // Full instance: fetchRaw + processResponse + onError
@@ -395,3 +302,318 @@ export function createFetchInstance<ResponseData, State extends Record<string, u
 
 // Re-export for internal use
 export { processResponse };
+
+// ============================================================
+//  resolveDefaults & fetchCore (提取的传输层核心 — 供 $fetch 复用)
+// ============================================================
+
+/**
+ * Resolve a {@link CreateFetchDefaults} into a {@link ResolvedFetchRequestConfig}.
+ *
+ * 将创建实例的默认配置解析为完整的请求配置。
+ */
+export function resolveDefaults(defaults: CreateFetchDefaults): ResolvedFetchRequestConfig {
+  return {
+    baseURL: defaults.baseURL,
+    url: defaults.url ?? '',
+    method: (defaults.method ?? 'GET').toString().toUpperCase(),
+    headers: toHeaders(defaults.headers),
+    params: defaults.params,
+    data: defaults.data,
+    responseType: defaults.responseType ?? 'json',
+    timeout: defaults.timeout,
+    signal: defaults.signal,
+    validateStatus: defaults.validateStatus ?? isHttpSuccess,
+    paramsSerializer: defaults.paramsSerializer ?? serializeParams,
+    parseResponse: defaults.parseResponse,
+    getFileName: defaults.getFileName,
+    retry: defaults.retry,
+    credentials: defaults.credentials,
+    mode: defaults.mode,
+    cache: defaults.cache,
+    redirect: defaults.redirect,
+    referrer: defaults.referrer,
+    referrerPolicy: defaults.referrerPolicy,
+    integrity: defaults.integrity,
+    keepalive: defaults.keepalive,
+    adapter: defaults.adapter,
+    ignoreResponseError: defaults.ignoreResponseError,
+    onRequest: defaults.onRequest as any,
+    onRequestError: defaults.onRequestError as any,
+    onResponse: defaults.onResponse as any,
+    onResponseError: defaults.onResponseError as any
+  } as ResolvedFetchRequestConfig;
+}
+
+/**
+ * Core fetch logic — transport layer only (no business-logic hooks).
+ *
+ * Handles: transport-level hooks (onRequest/onResponse/onRequestError/onResponseError),
+ * retry, timeout, body serialization, response parsing, validateStatus / ignoreResponseError.
+ *
+ * Both {@link createFetchInstance} (business-logic API) and `$fetch` (ofetch-compatible API)
+ * delegate to this function.
+ *
+ * 核心请求逻辑 —— 仅传输层(无业务逻辑钩子)。
+ *
+ * 处理:传输层钩子(onRequest/onResponse/onRequestError/onResponseError)、
+ * 重试、超时、请求体序列化、响应解析、validateStatus / ignoreResponseError。
+ */
+export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<FetchResponse> {
+  // 1. Transport-level onRequest hook (from config — ofetch-style, supports arrays)
+  const context: FetchContext = {
+    request: config.url,
+    options: config
+  };
+  if (config.onRequest) {
+    await callHooks(context, config.onRequest);
+  }
+
+  // 2. Build URL
+  const url = buildURL(config);
+  context.request = url;
+
+  // 3. Build headers (clone)
+  const headers = new Headers(config.headers);
+
+  // 4. Serialize body
+  const { body, duplex } = serializeBody(config.data, config.method, headers);
+
+  // 5. Timeout signal
+  const { signal, isTimeout } = createTimeoutSignal(config.timeout, config.signal);
+
+  // 6. Retry options
+  const retryOpts = createRetryOptions(config.retry);
+
+  // 7. Fetch with retry
+  const adapter = config.adapter ?? defaultAdapter;
+
+  for (let attempt = 0; attempt <= retryOpts.retries; attempt++) {
+    let nativeResponse: FetchAdapterResponse;
+    let request: Request | undefined;
+
+    try {
+      // Build adapter request init
+      const requestInit: FetchAdapterInit = {
+        method: config.method,
+        headers,
+        body,
+        signal
+      };
+      if (duplex) requestInit.duplex = duplex;
+      if (config.credentials !== undefined) requestInit.credentials = config.credentials;
+      if (config.mode !== undefined) requestInit.mode = config.mode;
+      if (config.cache !== undefined) requestInit.cache = config.cache;
+      if (config.redirect !== undefined) requestInit.redirect = config.redirect;
+      if (config.referrer !== undefined) requestInit.referrer = config.referrer;
+      if (config.referrerPolicy !== undefined) requestInit.referrerPolicy = config.referrerPolicy;
+      if (config.integrity !== undefined) requestInit.integrity = config.integrity;
+      if (config.keepalive !== undefined) requestInit.keepalive = config.keepalive;
+
+      // Best-effort Request object for metadata (may not exist in all environments)
+      if (typeof Request !== 'undefined') {
+        try {
+          request = new Request(url, requestInit as RequestInit);
+        } catch {
+          request = undefined;
+        }
+      }
+
+      nativeResponse = await adapter(url, requestInit);
+    } catch (err) {
+      // Network error or abort
+      const isAbort = err instanceof Error && err.name === 'AbortError';
+      const timeout = isTimeout();
+
+      const error: FetchError = new FetchErrorClass(
+        timeout
+          ? `[${config.method}] "${url}": Request timeout of ${config.timeout}ms exceeded`
+          : `[${config.method}] "${url}": ${(err as Error).message || 'Network Error'}`,
+        {
+          code: timeout ? 'ERR_TIMEOUT' : isAbort ? 'ERR_ABORTED' : 'ERR_NETWORK',
+          config,
+          cause: err
+        }
+      );
+
+      // Call onRequestError hook (transport layer)
+      context.error = error;
+      await callHooks(context, config.onRequestError);
+
+      // Don't retry on user-initiated abort (non-timeout)
+      if (isAbort && !timeout) throw error;
+
+      if (attempt < retryOpts.retries) {
+        const shouldRetry = await retryOpts.retryCondition(error);
+        if (shouldRetry) {
+          await sleep(retryOpts.retryDelay(attempt + 1, error));
+          continue;
+        }
+      }
+      throw error;
+    }
+
+    // 8. Parse response body
+    const data = await parseResponseBody(nativeResponse, config.responseType, config.parseResponse);
+
+    const fetchResponse: FetchResponse = {
+      data,
+      status: nativeResponse.status,
+      statusText: nativeResponse.statusText,
+      headers: nativeResponse.headers,
+      config,
+      request
+    };
+
+    // 9. Call onResponse hook (transport layer)
+    context.response = fetchResponse;
+    context.error = undefined;
+    await callHooks(context, config.onResponse);
+
+    // 10. Check validateStatus (unless ignoreResponseError)
+    if (!config.ignoreResponseError) {
+      const validateStatus = config.validateStatus ?? isHttpSuccess;
+      if (!validateStatus(nativeResponse.status)) {
+        const error: FetchError = new FetchErrorClass(
+          `[${config.method}] "${url}": ${nativeResponse.status} ${nativeResponse.statusText}`,
+          {
+            code: 'ERR_BAD_RESPONSE',
+            config,
+            request,
+            response: fetchResponse
+          }
+        );
+
+        // Call onResponseError hook (transport layer)
+        context.error = error;
+        await callHooks(context, config.onResponseError);
+
+        if (attempt < retryOpts.retries) {
+          const shouldRetry = await retryOpts.retryCondition(error);
+          if (shouldRetry) {
+            await sleep(retryOpts.retryDelay(attempt + 1, error));
+            continue;
+          }
+        }
+        throw error;
+      }
+    }
+
+    // Success
+    return fetchResponse;
+  }
+
+  // Should not reach here, but just in case
+  throw new FetchErrorClass(`[${config.method}] "${url}": Request failed: max retries exceeded`, {
+    config
+  });
+}
+
+// ============================================================
+//  $Fetch (ofetch 兼容的 fetch 客户端 — 对标 ofetch)
+// ============================================================
+
+/**
+ * Create a `$fetch` instance with merged defaults.
+ *
+ * The returned function is an ofetch-compatible fetch client that supports:
+ * - Transport-layer hooks (`onRequest`, `onResponse`, `onRequestError`, `onResponseError`)
+ * - Retry, timeout, and auto response-type detection
+ * - `.raw()` for full {@link FetchResponse} access
+ * - `.native` for direct access to the underlying `fetch`
+ * - `.create()` for creating new instances with merged defaults
+ *
+ * 创建一个带有合并默认值的 `$fetch` 实例。
+ *
+ * 返回的函数是兼容 ofetch 的 fetch 客户端,支持:
+ * - 传输层钩子(`onRequest`、`onResponse`、`onRequestError`、`onResponseError`)
+ * - 重试、超时、响应类型自动检测
+ * - `.raw()` 获取完整 {@link FetchResponse}
+ * - `.native` 直接访问底层 `fetch`
+ * - `.create()` 创建带合并默认值的新实例
+ *
+ * @example
+ * ```ts
+ * // Basic usage
+ * const data = await $fetch<User>('/api/users/1');
+ *
+ * // With options
+ * const user = await $fetch<User>('/api/users', {
+ *   method: 'POST',
+ *   data: { name: 'John' }
+ * });
+ *
+ * // Create a scoped instance
+ * const apiFetch = $fetch.create({
+ *   baseURL: 'https://api.example.com',
+ *   headers: { Authorization: 'Bearer xxx' },
+ *   retry: { retries: 3 }
+ * });
+ * const users = await apiFetch<User[]>('/users');
+ *
+ * // Raw response (no throw on error status)
+ * const response = await $fetch.raw('/api/users/1');
+ * console.log(response.status, response.data);
+ *
+ * // Hooks
+ * const loggingFetch = $fetch.create({
+ *   onRequest: [{ async ({ request }) { console.log('→', request); } }],
+ *   onResponse: [{ async ({ response }) { console.log('←', response.status); } }]
+ * });
+ * ```
+ */
+export function createFetch(defaults: FetchRequestConfig = {}): $Fetch {
+  const resolvedDefaults = resolveDefaults(defaults);
+
+  const fetchFn = (async <T = any, R extends ResponseType = 'json'>(
+    request: string,
+    options?: FetchRequestConfig<R>
+  ): Promise<MappedType<R, T>> => {
+    const config = mergeConfig(resolvedDefaults, { ...options, url: request });
+    const response = await fetchCore(config);
+    return response.data as MappedType<R, T>;
+  }) as $Fetch;
+
+  fetchFn.raw = (async <T = any, R extends ResponseType = 'json'>(
+    request: string,
+    options?: FetchRequestConfig<R>
+  ): Promise<FetchResponse<MappedType<R, T>>> => {
+    const config = mergeConfig(resolvedDefaults, { ...options, url: request });
+    return fetchCore(config) as Promise<FetchResponse<MappedType<R, T>>>;
+  }) as $Fetch['raw'];
+
+  fetchFn.native = fetch;
+
+  fetchFn.create = (newDefaults: FetchRequestConfig): $Fetch => {
+    return createFetch({ ...defaults, ...newDefaults });
+  };
+
+  return fetchFn;
+}
+
+/**
+ * The default `$fetch` instance — an ofetch-compatible fetch client.
+ *
+ * 默认 `$fetch` 实例 —— 兼容 ofetch 的 fetch 客户端。
+ *
+ * @example
+ * ```ts
+ * import { $fetch } from '@soybeanjs/fetch';
+ *
+ * // GET request (auto-detects response type)
+ * const user = await $fetch<User>('/api/users/1');
+ *
+ * // POST request
+ * const created = await $fetch<User>('/api/users', {
+ *   method: 'POST',
+ *   data: { name: 'John' }
+ * });
+ *
+ * // With retry and timeout
+ * const data = await $fetch('/api/data', {
+ *   retry: { retries: 3 },
+ *   timeout: 5000
+ * });
+ * ```
+ */
+export const $fetch = createFetch();
