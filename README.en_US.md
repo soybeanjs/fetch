@@ -383,7 +383,7 @@ Supported response types:
 
 ### 3. State Management
 
-`request.state` returns `EnhancedState`, which includes built-in runtime state (cache, loading, dedupe, etc.) and a user-defined `extend` field for custom state:
+`request.state` returns `EnhancedState`, which includes built-in runtime state (cache, loading, dedupe, messages, etc.) and supports custom fields via index signature:
 
 ```typescript
 const request = createRequest(
@@ -404,6 +404,39 @@ request.state.userId = 123;
 // Built-in runtime state is also accessible
 request.state.loading.count;   // current concurrent request count
 request.state.cache.size;      // cache entry count
+```
+
+#### Message Deduplication
+
+`request.state.messages` is a built-in `MessageStack` instance for request message deduplication. When a request is triggered repeatedly in a short time, only the first occurrence of a message passes through within the window:
+
+```typescript
+const request = createRequest(
+  { baseURL: 'https://api.example.com' },
+  {
+    isBackendSuccess: r => r.data.code === 200,
+    onError: error => {
+      // Only show the same error.message once within 3s
+      if (request.state.messages.push(error.message)) {
+        showToast(error.message);
+      }
+    }
+  }
+);
+
+// Custom dedup key (e.g., by error code)
+if (request.state.messages.push(error.code, error.message)) {
+  showToast(error.message);
+}
+
+// Adjust the time window (default 3000ms)
+request.state.messages.interval = 5000;
+
+// View active messages in the window
+request.state.messages.getActive();
+
+// Clear the message stack
+request.state.messages.clear();
 ```
 
 ### 4. Auto Retry

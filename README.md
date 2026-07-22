@@ -380,7 +380,7 @@ const stream = await request({
 
 ### 3. 状态管理
 
-`request.state` 返回 `EnhancedState`,包含内置运行时状态(cache、loading、dedupe 等)和用户自定义扩展状态 `extend`:
+`request.state` 返回 `EnhancedState`,包含内置运行时状态(cache、loading、dedupe、messages 等),并支持通过索引签名直接扩展自定义字段:
 
 ```typescript
 const request = createRequest(
@@ -401,6 +401,39 @@ request.state.userId = 123;
 // 内置运行时状态也可访问
 request.state.loading.count;   // 当前并发请求数
 request.state.cache.size;      // 缓存条目数
+```
+
+#### 消息去重
+
+`request.state.messages` 是内置的 `MessageStack` 实例,用于请求消息去重。当请求在短时间内重复触发时,窗口内相同 key 的消息只通过首次:
+
+```typescript
+const request = createRequest(
+  { baseURL: 'https://api.example.com' },
+  {
+    isBackendSuccess: r => r.data.code === 200,
+    onError: error => {
+      // 3s 内同一 error.message 只展示一次
+      if (request.state.messages.push(error.message)) {
+        showToast(error.message);
+      }
+    }
+  }
+);
+
+// 自定义去重 key(如按错误码去重)
+if (request.state.messages.push(error.code, error.message)) {
+  showToast(error.message);
+}
+
+// 调整时间窗口(默认 3000ms)
+request.state.messages.interval = 5000;
+
+// 查看窗口内活跃消息
+request.state.messages.getActive();
+
+// 清空消息栈
+request.state.messages.clear();
 ```
 
 ### 4. 自动重试

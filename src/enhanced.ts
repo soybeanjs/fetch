@@ -1,4 +1,5 @@
 import { FetchError } from './error';
+import { MessageStack } from './message';
 import { serializeParams } from './utils';
 import type {
   AuthOptions,
@@ -48,6 +49,8 @@ export interface EnhancedState {
   debounce: Map<string, DebounceEntry>;
   throttle: Map<string, number>;
   auth: { refreshing: Promise<string | null> | null };
+  /** 请求消息去重栈 (Request message deduplication stack) */
+  messages: MessageStack;
   [key: string]: any;
 }
 
@@ -63,7 +66,8 @@ export function createEnhancedState(): EnhancedState {
     loading: { count: 0, entries: new Map() },
     debounce: new Map(),
     throttle: new Map(),
-    auth: { refreshing: null }
+    auth: { refreshing: null },
+    messages: new MessageStack()
   };
 }
 
