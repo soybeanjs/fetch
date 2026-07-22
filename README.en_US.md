@@ -20,6 +20,7 @@ A lightweight, type-safe HTTP request library built on the native Fetch API, wit
 - 🌐 **$fetch API**: ofetch-compatible lightweight fetch client
 - 📡 **Transport Hooks**: `onRequest` / `onResponse` / `onRequestError` / `onResponseError`, array support
 - 🔍 **Auto Response Type Detection**: Auto-detect response type from `Content-Type` (incl. SSE)
+- 📤 **Upload Progress**: Cross-runtime upload progress tracking — XHR in browsers, TransformStream in Node/Bun/Deno/CF
 
 ## 📦 Installation
 
@@ -671,6 +672,140 @@ if (error) {
 }
 ```
 
+### 12. Upload Progress Tracking
+
+The native `fetch()` API **does not support upload progress events**. This library bridges that gap via the `onUploadProgress` config option — when set, the library automatically switches to a progress-capable adapter for that request, with no manual adapter management required.
+
+Works with all APIs: `createRequest`, `createFlatRequest`, `$fetch` / `createFetch`. Can be used at the instance level or per-request.
+
+**Cross-runtime support** — the library auto-selects the best mechanism:
+
+| Runtime              | Mechanism                        | `total` accuracy                 |
+| -------------------- | -------------------------------- | -------------------------------- |
+| Browser              | `XMLHttpRequest.upload.progress` | Accurate                         |
+| Node.js / Bun / Deno | `TransformStream` byte counting  | Accurate for known-size bodies (Blob/ArrayBuffer/string) |
+| CF Workers           | `TransformStream` byte counting  | May buffer (jump to 100%)        |
+
+> For `FormData` and raw `ReadableStream` bodies, the stream-based approach cannot determine the total size in advance. In this case `lengthComputable` is `false`, but `loaded` (bytes uploaded) still updates.
+
+#### Basic Usage (Per-Request)
+
+The most common scenario: set a progress callback only on upload endpoints.
+
+```typescript
+import { createRequest } from '@soybeanjs/fetch';
+
+const request = createRequest(
+  { baseURL: 'https://api.example.com' },
+  { /* ... */ }
+);
+
+async function uploadFile(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  // Simply pass the onUploadProgress callback in the request config
+  const result = await request.post('/upload', formData, {
+    onUploadProgress: ({ loaded, total, progress }) => {
+      console.log(`Upload: ${progress}% (${loaded}/${total} bytes)`);
+    }
+  });
+
+  return result;
+}
+```
+
+`$fetch` works the same way:
+
+```typescript
+import { $fetch } from '@soybeanjs/fetch';
+
+await $fetch('/upload', {
+  method: 'POST',
+  data: formData,
+  onUploadProgress: ({ progress }) => {
+    progressBar.value = progress;
+  }
+});
+```
+
+#### Progress Event
+
+The `onUploadProgress` callback receives an `UploadProgressEvent` object:
+
+| Property            | Type      | Description                                                          |
+| ------------------- | --------- | -------------------------------------------------------------------- |
+| `loaded`            | `number`  | Bytes uploaded so far                                                |
+| `total`             | `number`  | Total bytes (0 if not computable)                                    |
+| `progress`          | `number`  | Upload percentage 0-100 (0 if not computable)                        |
+| `lengthComputable`  | `boolean` | Whether total size is known. When `false`, `total`/`progress` are 0 but `loaded` is still valid |
+
+> In browser (XHR) mode, the callback fires only when the total size is known. In stream mode, it always fires — use `lengthComputable` to distinguish.
+
+#### With Vue / React Progress Bar
+
+```typescript
+import { ref } from 'vue';
+import { createFlatRequest } from '@soybeanjs/fetch';
+
+const uploadProgress = ref(0);
+
+const request = createFlatRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
+
+async function handleUpload(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const { data, error } = await request.post('/upload', formData, {
+    onUploadProgress: ({ progress }) => {
+      uploadProgress.value = progress;
+    }
+  });
+
+  if (error) {
+    console.error('Upload failed:', error.message);
+  } else {
+    console.log('Upload success:', data);
+  }
+
+  uploadProgress.value = 0; // reset
+}
+```
+
+#### Instance-Level Config (Global Upload Progress)
+
+To track upload progress on all requests of an instance, set `onUploadProgress` when creating the instance:
+
+```typescript
+const request = createRequest({
+  baseURL: 'https://api.example.com',
+  onUploadProgress: ({ progress }) => {
+    console.log(`Upload: ${progress}%`);
+  }
+}, options);
+```
+
+#### Advanced: createUploadProgressAdapter
+
+`createUploadProgressAdapter` is the lower-level building block that returns a `FetchAdapter`. It auto-selects the best mechanism per runtime (XHR in browsers, TransformStream elsewhere). Useful when you need to combine the upload progress adapter with other custom adapter logic:
+
+```typescript
+import { createRequest, createUploadProgressAdapter } from '@soybeanjs/fetch';
+
+const request = createRequest({
+  baseURL: 'https://api.example.com',
+  adapter: createUploadProgressAdapter(({ progress, loaded, lengthComputable }) => {
+    if (lengthComputable) {
+      console.log(`Upload: ${progress}%`);
+    } else {
+      console.log(`Uploaded ${loaded} bytes`);
+    }
+  })
+}, options);
+```
+
+> When both `adapter` and `onUploadProgress` are set, `adapter` takes precedence and `onUploadProgress` is ignored.
+
 ## 🛠️ Utilities
 
 ### parseContentDisposition
@@ -730,6 +865,24 @@ const response = createAdapterResponse({
   headers: new Headers({ 'content-type': 'application/json' }),
   body: responseBody
 });
+```
+
+### createUploadProgressAdapter
+
+Lower-level function that creates an XHR-based upload progress adapter (see [Upload Progress Tracking](#12-upload-progress-tracking)).
+
+> For per-request usage, prefer the `onUploadProgress` config option directly — no need to manually create an adapter.
+
+```typescript
+import { createUploadProgressAdapter } from '@soybeanjs/fetch';
+import type { UploadProgressEvent } from '@soybeanjs/fetch';
+
+const adapter = createUploadProgressAdapter((event: UploadProgressEvent) => {
+  console.log(`${event.progress}% (${event.loaded}/${event.total})`);
+});
+
+// adapter type: FetchAdapter | undefined
+// Returns FetchAdapter in browsers, undefined in Node.js
 ```
 
 ## 📝 Complete Example
@@ -890,6 +1043,18 @@ function createFlatTypedClient<Paths, Prefix = '', Field = ''>(
 ): FlatTypedClient<Paths, Prefix, Field>;
 ```
 
+### createUploadProgressAdapter
+
+Create an upload progress adapter (lower-level, cross-runtime). Uses XHR in browsers, TransformStream in Node/Bun/Deno/CF. Returns a `FetchAdapter`, or `undefined` if no mechanism is available.
+
+> For most cases, use the `onUploadProgress` config option directly (see [Upload Progress Tracking](#12-upload-progress-tracking)).
+
+```typescript
+function createUploadProgressAdapter(
+  onUploadProgress: (event: UploadProgressEvent) => void
+): FetchAdapter | undefined;
+```
+
 ### Type Definitions
 
 ```typescript
@@ -936,6 +1101,7 @@ interface FetchRequestConfig<R extends ResponseType = 'json'>
   getFileName?: (response: FetchResponse) => string;
   retry?: RetryOptions;
   adapter?: FetchAdapter;
+  onUploadProgress?: (event: UploadProgressEvent) => void;
   ignoreResponseError?: boolean;
   // Transport hooks (array support)
   onRequest?: FetchHook;
@@ -949,6 +1115,14 @@ type ResponseType = 'json' | 'auto' | 'blob' | 'arraybuffer' | 'stream' | 'text'
 
 // Adapter
 type FetchAdapter = (url: string, init: FetchAdapterInit) => Promise<FetchAdapterResponse>;
+
+// Upload progress event
+interface UploadProgressEvent {
+  loaded: number;            // bytes uploaded
+  total: number;             // total bytes (0 if not computable)
+  progress: number;          // percentage 0-100
+  lengthComputable: boolean; // whether total size is known
+}
 ```
 
 > **@deprecated**: The following deprecated names are still exported for backward compatibility but will be removed in a future version:

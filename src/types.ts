@@ -127,6 +127,33 @@ export type FetchHookFn<C extends FetchContext = FetchContext> = (context: C) =>
 export type FetchHook<C extends FetchContext = FetchContext> = MaybeArray<FetchHookFn<C>>;
 
 // ============================================================
+//  Upload Progress (上传进度)
+// ============================================================
+
+/**
+ * Upload progress event — passed to {@link UploadProgressHandler}.
+ *
+ * 上传进度事件 —— 传递给 {@link UploadProgressHandler}。
+ */
+export interface UploadProgressEvent {
+  /** Number of bytes uploaded so far (已上传的字节数) */
+  loaded: number;
+  /** Total number of bytes to upload, 0 if not computable (总字节数,不可计算时为 0) */
+  total: number;
+  /** Upload progress percentage 0-100 (上传进度百分比 0-100,不可计算时为 0) */
+  progress: number;
+  /** Whether the total size is known (总大小是否已知。`false` 时 `total`/`progress` 为 0,但 `loaded` 仍有效) */
+  lengthComputable: boolean;
+}
+
+/**
+ * Handler invoked during upload to report progress.
+ *
+ * 上传过程中调用的进度回调函数。
+ */
+export type UploadProgressHandler = (event: UploadProgressEvent) => void;
+
+// ============================================================
 //  Fetch Adapter (Fetch 适配器 — 可插拔的底层传输层)
 // ============================================================
 
@@ -270,6 +297,49 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omi
    * 省略时使用默认适配器(原生 `fetch()`)。传入自定义适配器可支持 uniapp、微信小程序等平台。
    */
   adapter?: FetchAdapter;
+  /**
+   * Upload progress callback.
+   *
+   * The native `fetch()` API does not support upload progress events. When this
+   * callback is provided, the library automatically switches to a progress-capable
+   * adapter for this request:
+   *
+   * - **Browser**: uses `XMLHttpRequest` (accurate `total` / `progress`)
+   * - **Node.js / Bun / Deno / CF Workers**: uses `TransformStream` byte counting
+   *   (accurate for known-size bodies like `Blob`; `lengthComputable: false` for
+   *   `FormData` / `ReadableStream`)
+   *
+   * Ignored when a custom `adapter` is also set — the custom adapter takes
+   * precedence. For global/instance-level upload progress, use
+   * {@link createUploadProgressAdapter} instead.
+   *
+   * 上传进度回调。
+   *
+   * 原生 `fetch()` API 不支持上传进度事件。设置此回调后,库会自动为该请求
+   * 切换到支持进度跟踪的适配器:
+   *
+   * - **浏览器**:使用 `XMLHttpRequest`(`total` / `progress` 精确)
+   * - **Node.js / Bun / Deno / CF Workers**:使用 `TransformStream` 字节计数
+   *   (对 `Blob` 等已知大小的 body 精确;`FormData` / `ReadableStream` 时
+   *   `lengthComputable` 为 `false`)
+   *
+   * 当同时设置了自定义 `adapter` 时,此选项会被忽略 —— 自定义适配器优先。
+   * 如需全局/实例级别的上传进度,请使用 {@link createUploadProgressAdapter}。
+   *
+   * @example
+   * ```ts
+   * await request.post('/upload', formData, {
+   *   onUploadProgress: ({ progress, loaded, lengthComputable }) => {
+   *     if (lengthComputable) {
+   *       console.log(`Upload: ${progress}%`);
+   *     } else {
+   *       console.log(`Uploaded ${loaded} bytes`);
+   *     }
+   *   }
+   * });
+   * ```
+   */
+  onUploadProgress?: UploadProgressHandler;
   /**
    * Whether to ignore response errors (4xx / 5xx) and return the response instead of throwing.
    *

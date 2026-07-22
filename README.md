@@ -20,6 +20,7 @@
 - 🌐 **$fetch API**:兼容 ofetch 的轻量 fetch 客户端
 - 📡 **传输层钩子**:`onRequest` / `onResponse` / `onRequestError` / `onResponseError`,支持数组
 - 🔍 **自动响应类型检测**:根据 `Content-Type` 自动判断响应类型(含 SSE 支持)
+- 📤 **上传进度**:跨运行时上传进度跟踪,浏览器用 XHR,Node/Bun/Deno/CF 用 TransformStream
 
 ## 📦 安装
 
@@ -659,6 +660,140 @@ if (error) {
 }
 ```
 
+### 12. 上传进度跟踪
+
+原生 `fetch()` API **不支持上传进度事件**。本库通过 `onUploadProgress` 配置项弥补这一缺陷 —— 设置后库会自动为该请求切换到支持进度跟踪的适配器,无需手动管理适配器。
+
+适用于 `createRequest`、`createFlatRequest`、`$fetch` / `createFetch` 的所有 API,可在实例级或单次请求级使用。
+
+**跨运行时支持**:库根据运行时自动选择最佳方案:
+
+| 运行时 | 机制 | `total` 精度 |
+| ------ | ---- | ------------ |
+| 浏览器 | `XMLHttpRequest.upload.progress` | 精确 |
+| Node.js / Bun / Deno | `TransformStream` 字节计数 | 已知大小 body 精确(Blob/ArrayBuffer/string 等) |
+| CF Workers | `TransformStream` 字节计数 | 可能缓冲(进度瞬间跳 100%) |
+
+> 对于 `FormData` 和原始 `ReadableStream` body,流式方案无法预知总大小,此时 `lengthComputable` 为 `false`,但 `loaded`(已上传字节数)仍会更新。
+
+#### 基本用法(单次请求)
+
+最常见场景:仅对上传接口设置进度回调。
+
+```typescript
+import { createRequest } from '@soybeanjs/fetch';
+
+const request = createRequest(
+  { baseURL: 'https://api.example.com' },
+  { /* ... */ }
+);
+
+async function uploadFile(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  // 只需在请求配置中传入 onUploadProgress 回调
+  const result = await request.post('/upload', formData, {
+    onUploadProgress: ({ loaded, total, progress }) => {
+      console.log(`上传进度: ${progress}% (${loaded}/${total} bytes)`);
+    }
+  });
+
+  return result;
+}
+```
+
+`$fetch` 同样支持:
+
+```typescript
+import { $fetch } from '@soybeanjs/fetch';
+
+await $fetch('/upload', {
+  method: 'POST',
+  data: formData,
+  onUploadProgress: ({ progress }) => {
+    progressBar.value = progress;
+  }
+});
+```
+
+#### 进度事件
+
+`onUploadProgress` 回调接收一个 `UploadProgressEvent` 对象:
+
+| 属性                | 类型      | 说明                                          |
+| ------------------- | --------- | --------------------------------------------- |
+| `loaded`            | `number`  | 已上传的字节数                                |
+| `total`             | `number`  | 总字节数(不可计算时为 0)                      |
+| `progress`          | `number`  | 上传进度百分比 0-100(不可计算时为 0)          |
+| `lengthComputable`  | `boolean` | 总大小是否已知。`false` 时 `total`/`progress` 为 0,但 `loaded` 仍有效 |
+
+> 浏览器(XHR)模式下,仅当总大小已知时触发回调。流式模式下始终触发,通过 `lengthComputable` 区分。
+
+#### 在 Vue / React 中结合进度条
+
+```typescript
+import { ref } from 'vue';
+import { createFlatRequest } from '@soybeanjs/fetch';
+
+const uploadProgress = ref(0);
+
+const request = createFlatRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
+
+async function handleUpload(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const { data, error } = await request.post('/upload', formData, {
+    onUploadProgress: ({ progress }) => {
+      uploadProgress.value = progress;
+    }
+  });
+
+  if (error) {
+    console.error('上传失败:', error.message);
+  } else {
+    console.log('上传成功:', data);
+  }
+
+  uploadProgress.value = 0; // 重置
+}
+```
+
+#### 实例级配置(全局上传进度)
+
+如需实例上所有请求都跟踪上传进度,可在创建实例时设置 `onUploadProgress`:
+
+```typescript
+const request = createRequest({
+  baseURL: 'https://api.example.com',
+  onUploadProgress: ({ progress }) => {
+    console.log(`Upload: ${progress}%`);
+  }
+}, options);
+```
+
+#### 高级:createUploadProgressAdapter
+
+`createUploadProgressAdapter` 是底层构建函数,返回一个 `FetchAdapter`。跨运行时自动选择最佳方案(浏览器 XHR,其他环境 TransformStream)。适合需要将上传进度适配器与其他自定义适配器逻辑组合的场景:
+
+```typescript
+import { createRequest, createUploadProgressAdapter } from '@soybeanjs/fetch';
+
+const request = createRequest({
+  baseURL: 'https://api.example.com',
+  adapter: createUploadProgressAdapter(({ progress, loaded, lengthComputable }) => {
+    if (lengthComputable) {
+      console.log(`Upload: ${progress}%`);
+    } else {
+      console.log(`Uploaded ${loaded} bytes`);
+    }
+  })
+}, options);
+```
+
+> 当同时设置了 `adapter` 和 `onUploadProgress` 时,`adapter` 优先,`onUploadProgress` 会被忽略。
+
 ## 🛠️ 实用工具
 
 ### parseContentDisposition
@@ -718,6 +853,24 @@ const response = createAdapterResponse({
   headers: new Headers({ 'content-type': 'application/json' }),
   body: responseBody
 });
+```
+
+### createUploadProgressAdapter
+
+底层函数,创建基于 XHR 的上传进度适配器(详见 [上传进度跟踪](#12-上传进度跟踪))。
+
+> 单次请求推荐直接使用 `onUploadProgress` 配置项,无需手动创建适配器。
+
+```typescript
+import { createUploadProgressAdapter } from '@soybeanjs/fetch';
+import type { UploadProgressEvent } from '@soybeanjs/fetch';
+
+const adapter = createUploadProgressAdapter((event: UploadProgressEvent) => {
+  console.log(`${event.progress}% (${event.loaded}/${event.total})`);
+});
+
+// adapter 类型为 FetchAdapter | undefined
+// 浏览器环境返回 FetchAdapter,Node.js 返回 undefined
 ```
 
 ## 📝 完整示例
@@ -878,6 +1031,18 @@ function createFlatTypedClient<Paths, Prefix = '', Field = ''>(
 ): FlatTypedClient<Paths, Prefix, Field>;
 ```
 
+### createUploadProgressAdapter
+
+创建上传进度适配器(底层函数,跨运行时)。浏览器使用 XHR,Node/Bun/Deno/CF 使用 TransformStream。返回 `FetchAdapter`,无可用方案时返回 `undefined`。
+
+> 大多数场景下直接使用 `onUploadProgress` 配置项即可(详见 [上传进度跟踪](#12-上传进度跟踪)),无需手动调用此函数。
+
+```typescript
+function createUploadProgressAdapter(
+  onUploadProgress: (event: UploadProgressEvent) => void
+): FetchAdapter | undefined;
+```
+
 ### 类型定义
 
 ```typescript
@@ -926,6 +1091,7 @@ interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omit<
   getFileName?: (response: FetchResponse) => string;
   retry?: RetryOptions;
   adapter?: FetchAdapter;
+  onUploadProgress?: (event: UploadProgressEvent) => void;
   ignoreResponseError?: boolean;
   // 传输层钩子(支持数组)
   onRequest?: FetchHook;
@@ -939,6 +1105,14 @@ type ResponseType = 'json' | 'auto' | 'blob' | 'arraybuffer' | 'stream' | 'text'
 
 // 适配器
 type FetchAdapter = (url: string, init: FetchAdapterInit) => Promise<FetchAdapterResponse>;
+
+// 上传进度事件
+interface UploadProgressEvent {
+  loaded: number;            // 已上传字节数
+  total: number;             // 总字节数(不可计算时为 0)
+  progress: number;          // 进度百分比 0-100
+  lengthComputable: boolean; // 总大小是否已知
+}
 ```
 
 > **@deprecated**:以下废弃名称仍为向后兼容而导出,但将在未来版本中移除:

@@ -10,7 +10,7 @@ import {
   serializeParams,
   toHeaders
 } from './utils';
-import { defaultAdapter } from './adapter';
+import { createUploadProgressAdapter, defaultAdapter } from './adapter';
 import { BackendError, FetchError } from './error';
 import { createRetryOptions } from './options';
 import type {
@@ -53,6 +53,7 @@ export function mergeConfig(
     getFileName: config.getFileName ?? defaults.getFileName,
     timeout: config.timeout ?? defaults.timeout,
     adapter: config.adapter ?? defaults.adapter,
+    onUploadProgress: config.onUploadProgress ?? defaults.onUploadProgress,
     ignoreResponseError: config.ignoreResponseError ?? defaults.ignoreResponseError,
     onRequest: config.onRequest ?? defaults.onRequest,
     onRequestError: config.onRequestError ?? defaults.onRequestError,
@@ -336,6 +337,7 @@ export function resolveDefaults(defaults: CreateFetchDefaults): ResolvedFetchReq
     integrity: defaults.integrity,
     keepalive: defaults.keepalive,
     adapter: defaults.adapter,
+    onUploadProgress: defaults.onUploadProgress,
     ignoreResponseError: defaults.ignoreResponseError,
     onRequest: defaults.onRequest as any,
     onRequestError: defaults.onRequestError as any,
@@ -385,7 +387,13 @@ export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<Fet
   const retryOpts = createRetryOptions(config.retry);
 
   // 7. Fetch with retry
-  const adapter = config.adapter ?? defaultAdapter;
+  // When onUploadProgress is set (and no custom adapter), auto-switch to XHR adapter
+  // so that upload progress events are available (native fetch does not support them).
+  let adapter = config.adapter ?? defaultAdapter;
+  if (!config.adapter && config.onUploadProgress) {
+    const uploadAdapter = createUploadProgressAdapter(config.onUploadProgress);
+    if (uploadAdapter) adapter = uploadAdapter;
+  }
 
   for (let attempt = 0; attempt <= retryOpts.retries; attempt++) {
     let nativeResponse: FetchAdapterResponse;
