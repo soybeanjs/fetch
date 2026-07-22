@@ -11,15 +11,14 @@ import {
   toHeaders
 } from './utils';
 import { defaultAdapter } from './adapter';
+import { BackendError, FetchError } from './error';
 import { createRetryOptions } from './options';
-import { BackendError as BackendErrorClass, FetchError as FetchErrorClass } from './types';
 import type {
   $Fetch,
   CreateFetchDefaults,
   FetchAdapterInit,
   FetchAdapterResponse,
   FetchContext,
-  FetchError,
   FetchInstance,
   FetchRequestConfig,
   FetchResponse,
@@ -250,7 +249,7 @@ async function processResponse<ResponseData>(
 
   // Still failing → throw BackendError
   const errorMsg = opts.backendErrorMsg || 'Backend request error, please check `isBackendSuccess`.';
-  throw new BackendErrorClass(errorMsg, response);
+  throw new BackendError(errorMsg, response);
 }
 
 // ============================================================
@@ -425,7 +424,7 @@ export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<Fet
       const isAbort = err instanceof Error && err.name === 'AbortError';
       const timeout = isTimeout();
 
-      const error: FetchError = new FetchErrorClass(
+      const error: FetchError = new FetchError(
         timeout
           ? `[${config.method}] "${url}": Request timeout of ${config.timeout}ms exceeded`
           : `[${config.method}] "${url}": ${(err as Error).message || 'Network Error'}`,
@@ -474,7 +473,7 @@ export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<Fet
     if (!config.ignoreResponseError) {
       const validateStatus = config.validateStatus ?? isHttpSuccess;
       if (!validateStatus(nativeResponse.status)) {
-        const error: FetchError = new FetchErrorClass(
+        const error: FetchError = new FetchError(
           `[${config.method}] "${url}": ${nativeResponse.status} ${nativeResponse.statusText}`,
           {
             code: 'ERR_BAD_RESPONSE',
@@ -504,7 +503,7 @@ export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<Fet
   }
 
   // Should not reach here, but just in case
-  throw new FetchErrorClass(`[${config.method}] "${url}": Request failed: max retries exceeded`, {
+  throw new FetchError(`[${config.method}] "${url}": Request failed: max retries exceeded`, {
     config
   });
 }

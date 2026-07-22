@@ -1,4 +1,5 @@
-import type { FetchError, FetchRequestConfig, FetchResponse, FlatRequestInstance, RequestInstance } from './types';
+import type { FetchError } from './error';
+import type { FetchRequestConfig, FetchResponse, FlatRequestInstance, RequestInstance } from './types';
 
 // ============================================================
 //  Type Helpers (类型辅助工具)

@@ -36,3 +36,6 @@ export const RETRY_STATUS_CODES = new Set([
  * @see https://developer.mozilla.org/en-US/docs/Web/API/Response/body
  */
 export const NULL_BODY_STATUS_CODES = new Set([101, 204, 205, 304]);
+
+/** Backend error flag, used as `error.code` */
+export const BACKEND_ERROR_FLAG = 'BACKEND_ERROR';

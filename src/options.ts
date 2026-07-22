@@ -1,7 +1,8 @@
 import { RETRY_STATUS_CODES } from './constant';
 import { isHttpSuccess } from './shared';
-import type { CreateFetchDefaults, FetchError, RequestOption, RetryOptions } from './types';
 import { mergeHeaders, serializeParams } from './utils';
+import type { FetchError } from './error';
+import type { CreateFetchDefaults, RequestOption, RetryOptions } from './types';
 
 // ============================================================
 //  Default Options (默认选项)
@@ -15,11 +16,7 @@ import { mergeHeaders, serializeParams } from './utils';
  * - `backendErrorMsg` defaults to a standard message if not provided
  * - `transform` defaults to extracting `response.data`
  */
-export function createDefaultOptions<
-  ResponseData,
-  ApiData,
-  State extends Record<string, unknown>
->(
+export function createDefaultOptions<ResponseData, ApiData, State extends Record<string, unknown>>(
   options: RequestOption<ResponseData, ApiData, State>
 ): RequestOption<ResponseData, ApiData, State> {
   return {
