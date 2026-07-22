@@ -1,0 +1,11 @@
+packages:
+  - 'packages/**'
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@latest
+  vitest: npm:@voidzero-dev/vite-plus-test@latest
+  vite-plus: ^0.2.5
+shamefullyHoist: true
+ignoreWorkspaceRootCheck: true
+linkWorkspacePackages: true
+allowBuilds:
+minimumReleaseAgeExclude:
