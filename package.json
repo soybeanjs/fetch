@@ -1,12 +1,44 @@
 {
   "name": "@soybeanjs/fetch",
   "version": "0.0.1",
-  "description": "",
+  "description": "A lightweight, type-safe HTTP request library based on native fetch",
+  "homepage": "https://github.com/soybeanjs/fetch",
+  "bugs": {
+    "url": "https://github.com/soybeanjs/fetch/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Soybean",
+    "email": "soybeanjs@outlook.com",
+    "url": "https://github.com/soybeanjs"
+  },
+  "repository": {
+    "url": "https://github.com/soybeanjs/fetch.git"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
+    "build": "vp build",
     "commit": "soy git-commit",
+    "commit:zh": "soy git-commit -l=zh-cn",
     "fmt": "vp fmt",
     "lint": "vp lint --fix",
+    "typecheck": "tsc --noEmit --skipLibCheck",
     "upkg": "soy ncu"
   },
   "devDependencies": {
