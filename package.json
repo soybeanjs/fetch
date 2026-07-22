@@ -38,6 +38,8 @@
     "commit:zh": "soy git-commit -l=zh-cn",
     "fmt": "vp fmt",
     "lint": "vp lint --fix",
+    "publish-pkg": "pnpm -r publish --access public",
+    "release": "soy release",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "upkg": "soy ncu"
   },
