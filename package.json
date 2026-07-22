@@ -1,6 +1,6 @@
 {
   "name": "@soybeanjs/fetch",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "A lightweight, type-safe HTTP request library based on native fetch",
   "homepage": "https://github.com/soybeanjs/fetch",
   "bugs": {
