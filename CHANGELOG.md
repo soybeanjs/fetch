@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.5](https://github.com/soybeanjs/fetch/compare/v0.0.4...v0.0.5) (2026-07-23)
+
+### &nbsp;&nbsp;&nbsp;🚀 Features
+
+- **openapi**: add responseType type inference support &nbsp;-&nbsp; by @soybeanjs [<samp>(107c8)</samp>](https://github.com/soybeanjs/fetch/commit/107c8bb)
+
+### &nbsp;&nbsp;&nbsp;❤️ Contributors
+
+[![soybeanjs](https://github.com/soybeanjs.png?size=48)](https://github.com/soybeanjs)&nbsp;&nbsp;
+
 ## [v0.0.4](https://github.com/soybeanjs/fetch/compare/v0.0.3...v0.0.4) (2026-07-23)
 
 ### &nbsp;&nbsp;&nbsp;🐞 Bug Fixes
