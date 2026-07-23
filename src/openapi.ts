@@ -127,12 +127,23 @@ type ExtractFirstError<R> =
 /** Extract the full parameters object from an operation. */
 export type OperationParams<T> = T extends { parameters: infer P } ? P : Record<string, never>;
 
-/** Determine whether the `params` option is required based on the operation. */
-export type ParamsOption<T> = T extends { parameters: infer P }
-  ? RequiredKeysOf<P> extends never
-    ? { params?: P }
-    : { params: P }
-  : { params?: Record<string, never> };
+/** Extract the query parameters type from an operation. */
+type OperationQueryParams<T> = T extends { parameters: { query: infer Q } } ? NonNullable<Q> : never;
+
+/** Extract the path parameters type from an operation. */
+type OperationPathParams<T> = T extends { parameters: { path: infer P } } ? NonNullable<P> : never;
+
+/** Extract the header parameters type from an operation. */
+type OperationHeaderParams<T> = T extends { parameters: { header: infer H } } ? NonNullable<H> : never;
+
+/** `pathParams` — required when the operation has path params (URL placeholders must be filled). */
+type PathParamsOption<T> = OperationPathParams<T> extends never ? {} : { pathParams: OperationPathParams<T> };
+
+/** `query` — optional, typed from the OpenAPI spec when the operation has query params. */
+type QueryParamsOption<T> = OperationQueryParams<T> extends never ? {} : { query?: OperationQueryParams<T> };
+
+/** `headers` — optional, typed from the OpenAPI spec when the operation has header params. */
+type HeaderParamsOption<T> = OperationHeaderParams<T> extends never ? {} : { headers?: OperationHeaderParams<T> };
 
 /** Determine whether the `body` option is required based on the operation. */
 export type RequestBodyOption<T> =
@@ -145,16 +156,24 @@ export type RequestBodyOption<T> =
 /**
  * Full per-request options for an OpenAPI operation.
  *
- * Merges `params` (OpenAPI-style: `{ query, path, header }`), `body`, and allows
- * passthrough of fetch config. The following fields are intentionally omitted
- * because they are managed by the client:
+ * Flattened API — each parameter category is a top-level field:
+ * - `pathParams` — path parameters (replaces `{id}` in the URL); required when the
+ *   operation has path params
+ * - `query` — query parameters; optional, typed from the OpenAPI spec
+ * - `headers` — header parameters; optional, typed from the OpenAPI spec
+ * - `body` — request body; required/optional per the OpenAPI spec
+ * - remaining `FetchRequestConfig` fields (timeout, retry, …) pass through
+ *
+ * The following fields are omitted from the passthrough because they are managed
+ * by the client or provided as typed top-level fields:
  * - `url` / `method` — set by the client itself
- * - `query` / `params` / `body` / `data` — replaced by `params.query` and `body`
- * - `headers` — replaced by `params.header` to avoid dual-path ambiguity
+ * - `body` / `query` / `headers` — provided as typed top-level fields above
  */
-export type OpenapiRequestOptions<T> = ParamsOption<T> &
+export type OpenapiRequestOptions<T> = PathParamsOption<T> &
+  QueryParamsOption<T> &
+  HeaderParamsOption<T> &
   RequestBodyOption<T> &
-  Omit<FetchRequestConfig, 'url' | 'method' | 'body' | 'headers'>;
+  Omit<FetchRequestConfig, 'url' | 'method' | 'body' | 'query' | 'headers'>;
 
 // ============================================================
 //  Client Method Types (客户端方法类型)
@@ -265,12 +284,12 @@ export type FlatTypedClient<Paths extends Record<string, any>, Field extends str
 /** Regex to match path parameters like `{id}` */
 const PATH_PARAM_RE = /\{([^}]+)\}/g;
 
-/** Replace path parameters (e.g. `{id}`) with actual values from `params.path`. */
-function replacePathParams(path: string, params?: Record<string, unknown>): string {
-  if (!params) return path;
+/** Replace path parameters (e.g. `{id}`) with actual values from `pathParams`. */
+function replacePathParams(path: string, pathParams?: Record<string, unknown>): string {
+  if (!pathParams) return path;
 
   return path.replace(PATH_PARAM_RE, (_, key: string) => {
-    const value = params[key];
+    const value = pathParams[key];
     if (value === undefined || value === null) {
       throw new Error(`[openapi-request] Missing required path parameter "${key}" in "${path}"`);
     }
@@ -279,23 +298,23 @@ function replacePathParams(path: string, params?: Record<string, unknown>): stri
 }
 
 /**
- * Translate the OpenAPI-style `{ params: { query, path, header, cookie }, body, ...rest }`
- * options into a {@link FetchRequestConfig}.
+ * Translate the flattened OpenAPI options `{ pathParams, query, headers, body, ...rest }`
+ * into a {@link FetchRequestConfig}.
  *
- * Now that `FetchRequestConfig` has native `body` and `query` fields, this just
- * maps `params.query` → `query`, `params.header` → `headers`, and passes `body` through.
+ * `pathParams` is used for URL placeholder replacement; `query`, `headers`, and `body`
+ * are passed through directly to the fetch config.
  */
 function buildFetchConfig(url: string, prefix: string, method: HttpMethod, options: any): FetchRequestConfig<'json'> {
-  const { params, body, ...restConfig } = options || {};
+  const { pathParams, query, headers, body, ...restConfig } = options || {};
 
-  const resolvedUrl = replacePathParams(`${prefix}${url}`, params?.path);
+  const resolvedUrl = replacePathParams(`${prefix}${url}`, pathParams);
 
   return {
     url: resolvedUrl,
     method,
-    query: params?.query,
+    query,
     body,
-    headers: params?.header,
+    headers,
     ...restConfig
   };
 }
@@ -328,9 +347,9 @@ type PathsRemovedPrefix<Paths extends Record<string, any>, Prefix extends string
  * // Spec describes envelope { code, data, message }, transform unwraps `data`
  * const client = createTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
  *
- * // Fully type-safe — path, params, body, and response are all inferred
+ * // Fully type-safe — path, query, body, and response are all inferred
  * const menus = await client.get('/menu/list', {
- *   params: { query: { page: 1, pageSize: 10 } }
+ *   query: { page: 1, pageSize: 10 }
  * });
  *
  * // raw method — bypasses transform, returns full FetchResponse
@@ -387,7 +406,7 @@ export function createTypedClient<
  * const client = createFlatTypedClient<paths, '/api/v1', 'data'>(flatRequest, '/api/v1');
  *
  * const { data, error } = await client.get('/menu/list', {
- *   params: { query: { page: 1, pageSize: 10 } }
+ *   query: { page: 1, pageSize: 10 }
  * });
  *
  * if (error) {

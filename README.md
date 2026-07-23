@@ -135,7 +135,7 @@ const user = await $fetch<User>('/api/users/1');
 // POST 请求
 const created = await $fetch<User>('/api/users', {
   method: 'POST',
-  data: { name: 'John' }
+  body: { name: 'John' }
 });
 
 // 创建带默认值的实例
@@ -399,8 +399,8 @@ request.state.token = 'new-token';
 request.state.userId = 123;
 
 // 内置运行时状态也可访问
-request.state.loading.count;   // 当前并发请求数
-request.state.cache.size;      // 缓存条目数
+request.state.loading.count; // 当前并发请求数
+request.state.cache.size; // 缓存条目数
 ```
 
 #### 消息去重
@@ -560,7 +560,7 @@ const fileResponse = await request.raw({
 // GET 请求
 const users = await request.get<User[]>('/users');
 const usersWithQuery = await request.get<User[]>('/users', {
-  params: { page: 1, pageSize: 10 }
+  query: { page: 1, pageSize: 10 }
 });
 
 // POST 请求
@@ -654,7 +654,7 @@ const client = createTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
 
 // 路径、参数、请求体、返回值均有类型推导
 const menus = await client.get('/menu/list', {
-  params: { query: { page: 1, pageSize: 10 } }
+  query: { page: 1, pageSize: 10 }
 });
 
 // POST 请求
@@ -662,9 +662,14 @@ const loginResult = await client.post('/auth/login', {
   body: { username: 'admin', password: '123456' }
 });
 
+// 路径参数(替换 URL 中的 {id})
+const user = await client.get('/users/{id}', {
+  pathParams: { id: 1 }
+});
+
 // raw 方法 — 跳过 transform,返回完整 FetchResponse
 const response = await client.raw.get('/menu/list', {
-  params: { query: { page: 1 } }
+  query: { page: 1 }
 });
 ```
 
@@ -680,7 +685,7 @@ const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, {/
 const client = createFlatTypedClient<paths, '/api/v1', 'data'>(flatRequest, '/api/v1');
 
 const { data, error } = await client.get('/menu/list', {
-  params: { query: { page: 1 } }
+  query: { page: 1 }
 });
 
 if (error) {
@@ -698,11 +703,11 @@ if (error) {
 
 **跨运行时支持**:库根据运行时自动选择最佳方案:
 
-| 运行时 | 机制 | `total` 精度 |
-| ------ | ---- | ------------ |
-| 浏览器 | `XMLHttpRequest.upload.progress` | 精确 |
-| Node.js / Bun / Deno | `TransformStream` 字节计数 | 已知大小 body 精确(Blob/ArrayBuffer/string 等) |
-| CF Workers | `TransformStream` 字节计数 | 可能缓冲(进度瞬间跳 100%) |
+| 运行时               | 机制                             | `total` 精度                                   |
+| -------------------- | -------------------------------- | ---------------------------------------------- |
+| 浏览器               | `XMLHttpRequest.upload.progress` | 精确                                           |
+| Node.js / Bun / Deno | `TransformStream` 字节计数       | 已知大小 body 精确(Blob/ArrayBuffer/string 等) |
+| CF Workers           | `TransformStream` 字节计数       | 可能缓冲(进度瞬间跳 100%)                      |
 
 > 对于 `FormData` 和原始 `ReadableStream` body,流式方案无法预知总大小,此时 `lengthComputable` 为 `false`,但 `loaded`(已上传字节数)仍会更新。
 
@@ -713,10 +718,7 @@ if (error) {
 ```typescript
 import { createRequest } from '@soybeanjs/fetch';
 
-const request = createRequest(
-  { baseURL: 'https://api.example.com' },
-  { /* ... */ }
-);
+const request = createRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
 
 async function uploadFile(file: File) {
   const formData = new FormData();
@@ -740,7 +742,7 @@ import { $fetch } from '@soybeanjs/fetch';
 
 await $fetch('/upload', {
   method: 'POST',
-  data: formData,
+  body: formData,
   onUploadProgress: ({ progress }) => {
     progressBar.value = progress;
   }
@@ -751,12 +753,12 @@ await $fetch('/upload', {
 
 `onUploadProgress` 回调接收一个 `UploadProgressEvent` 对象:
 
-| 属性                | 类型      | 说明                                          |
-| ------------------- | --------- | --------------------------------------------- |
-| `loaded`            | `number`  | 已上传的字节数                                |
-| `total`             | `number`  | 总字节数(不可计算时为 0)                      |
-| `progress`          | `number`  | 上传进度百分比 0-100(不可计算时为 0)          |
-| `lengthComputable`  | `boolean` | 总大小是否已知。`false` 时 `total`/`progress` 为 0,但 `loaded` 仍有效 |
+| 属性               | 类型      | 说明                                                                  |
+| ------------------ | --------- | --------------------------------------------------------------------- |
+| `loaded`           | `number`  | 已上传的字节数                                                        |
+| `total`            | `number`  | 总字节数(不可计算时为 0)                                              |
+| `progress`         | `number`  | 上传进度百分比 0-100(不可计算时为 0)                                  |
+| `lengthComputable` | `boolean` | 总大小是否已知。`false` 时 `total`/`progress` 为 0,但 `loaded` 仍有效 |
 
 > 浏览器(XHR)模式下,仅当总大小已知时触发回调。流式模式下始终触发,通过 `lengthComputable` 区分。
 
@@ -795,12 +797,15 @@ async function handleUpload(file: File) {
 如需实例上所有请求都跟踪上传进度,可在创建实例时设置 `onUploadProgress`:
 
 ```typescript
-const request = createRequest({
-  baseURL: 'https://api.example.com',
-  onUploadProgress: ({ progress }) => {
-    console.log(`Upload: ${progress}%`);
-  }
-}, options);
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    onUploadProgress: ({ progress }) => {
+      console.log(`Upload: ${progress}%`);
+    }
+  },
+  options
+);
 ```
 
 #### 高级:createUploadProgressAdapter
@@ -810,16 +815,19 @@ const request = createRequest({
 ```typescript
 import { createRequest, createUploadProgressAdapter } from '@soybeanjs/fetch';
 
-const request = createRequest({
-  baseURL: 'https://api.example.com',
-  adapter: createUploadProgressAdapter(({ progress, loaded, lengthComputable }) => {
-    if (lengthComputable) {
-      console.log(`Upload: ${progress}%`);
-    } else {
-      console.log(`Uploaded ${loaded} bytes`);
-    }
-  })
-}, options);
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    adapter: createUploadProgressAdapter(({ progress, loaded, lengthComputable }) => {
+      if (lengthComputable) {
+        console.log(`Upload: ${progress}%`);
+      } else {
+        console.log(`Uploaded ${loaded} bytes`);
+      }
+    })
+  },
+  options
+);
 ```
 
 > 当同时设置了 `adapter` 和 `onUploadProgress` 时,`adapter` 优先,`onUploadProgress` 会被忽略。
@@ -854,27 +862,30 @@ const blob = await $fetch('/video.mp4', {
 
 `onDownloadProgress` 回调接收 `DownloadProgressEvent`(与 `UploadProgressEvent` 结构相同):
 
-| 属性                | 类型      | 说明                                       |
-| ------------------- | --------- | ------------------------------------------ |
-| `loaded`            | `number`  | 已下载字节数                               |
-| `total`             | `number`  | 总字节数(从 `Content-Length` 获取,无则为 0) |
-| `progress`          | `number`  | 下载百分比 0-100(不可计算时为 0)            |
-| `lengthComputable`  | `boolean` | 总大小是否已知                             |
+| 属性               | 类型      | 说明                                        |
+| ------------------ | --------- | ------------------------------------------- |
+| `loaded`           | `number`  | 已下载字节数                                |
+| `total`            | `number`  | 总字节数(从 `Content-Length` 获取,无则为 0) |
+| `progress`         | `number`  | 下载百分比 0-100(不可计算时为 0)            |
+| `lengthComputable` | `boolean` | 总大小是否已知                              |
 
 ### 14. 请求缓存
 
 通过 `cache` 配置项缓存 GET 响应,避免重复请求。支持 TTL、最大条数、自定义 key 和按方法过滤。
 
 ```typescript
-const request = createRequest({
-  baseURL: '/api',
-  cache: {
-    ttl: 30000,              // 缓存 30 秒
-    methods: ['get'],        // 仅缓存 GET(默认)
-    max: 100,                // 最多 100 条(默认),超出淘汰最旧
-    // key: (config) => '...' // 自定义缓存 key
-  }
-}, options);
+const request = createRequest(
+  {
+    baseURL: '/api',
+    cache: {
+      ttl: 30000, // 缓存 30 秒
+      methods: ['get'], // 仅缓存 GET(默认)
+      max: 100 // 最多 100 条(默认),超出淘汰最旧
+      // key: (config) => '...' // 自定义缓存 key
+    }
+  },
+  options
+);
 
 // 第一次请求:发起网络调用
 const a = await request.get('/user');
@@ -891,7 +902,7 @@ const c = await request.get('/user', { cache: false });
 // 清除所有缓存
 request.clearCache();
 
-// 删除指定 key 的缓存(默认 key 格式为 "METHOD:url:params")
+// 删除指定 key 的缓存(默认 key 格式为 "METHOD:url:query")
 request.deleteCache('GET:/api/user:id=1');
 
 // 更新数据后清除缓存,下次请求将重新拉取
@@ -904,28 +915,31 @@ request.clearCache();
 通过 `dedupe` 配置项合并相同的在途请求。当多个相同的请求同时在途时,只发起一次网络调用,所有调用者共享同一个 Promise。
 
 ```typescript
-const request = createRequest({
-  baseURL: '/api',
-  dedupe: true
-}, options);
+const request = createRequest(
+  {
+    baseURL: '/api',
+    dedupe: true
+  },
+  options
+);
 
 // 两个并发相同请求 → 只发一次网络调用
-const [a, b] = await Promise.all([
-  request.get('/user'),
-  request.get('/user')
-]);
+const [a, b] = await Promise.all([request.get('/user'), request.get('/user')]);
 console.log(a === b); // true(同一个响应)
 
 // 自定义去重 key
-const request2 = createRequest({
-  baseURL: '/api',
-  dedupe: {
-    key: (config) => `${config.method}:${config.url}`
-  }
-}, options);
+const request2 = createRequest(
+  {
+    baseURL: '/api',
+    dedupe: {
+      key: config => `${config.method}:${config.url}`
+    }
+  },
+  options
+);
 ```
 
-> 默认去重 key 为 `method:url:params:data`。请求完成后自动从去重表中移除。
+> 默认去重 key 为 `method:url:query:body`。请求完成后自动从去重表中移除。
 
 ### 16. 并发限制
 
@@ -951,34 +965,37 @@ const results = await Promise.all(
 通过 `onGlobalLoadingChange`、`onLoadingChange`、`slowThreshold` 和 `onSlowRequest` 自动追踪请求状态。
 
 ```typescript
-const request = createRequest({
-  baseURL: '/api',
-  // 全局 loading:第一个请求开始时 true,最后一个请求结束时 false
-  onGlobalLoadingChange: (loading) => {
-    store.globalLoading = loading;
+const request = createRequest(
+  {
+    baseURL: '/api',
+    // 全局 loading:第一个请求开始时 true,最后一个请求结束时 false
+    onGlobalLoadingChange: loading => {
+      store.globalLoading = loading;
+    },
+    // 慢请求:超过 10 秒触发告警
+    slowThreshold: 10000,
+    onSlowRequest: ({ url, method, duration }) => {
+      console.warn(`慢请求: ${method} ${url} 已耗时 ${duration}ms`);
+      // 上报监控...
+    }
   },
-  // 慢请求:超过 10 秒触发告警
-  slowThreshold: 10000,
-  onSlowRequest: ({ url, method, duration }) => {
-    console.warn(`慢请求: ${method} ${url} 已耗时 ${duration}ms`);
-    // 上报监控...
-  }
-}, options);
+  options
+);
 
 // 单请求 loading:该请求开始时 true,结束时 false
 await request.post('/save', data, {
-  onLoadingChange: (loading) => {
+  onLoadingChange: loading => {
     saveBtnLoading.value = loading;
   }
 });
 ```
 
-| 配置项                    | 类型                                       | 说明                                          |
-| ------------------------- | ------------------------------------------ | --------------------------------------------- |
-| `onGlobalLoadingChange`   | `(loading: boolean) => void`               | 全局 loading 状态变化回调(0→1 true,1→0 false) |
-| `onLoadingChange`         | `(loading: boolean) => void`               | 单请求 loading 状态回调(该请求开始 true,结束 false) |
-| `slowThreshold`           | `number`                                   | 慢请求阈值(ms),0 = 不启用(默认)             |
-| `onSlowRequest`           | `(entry: SlowRequestEntry) => void`        | 慢请求回调,含 `url`/`method`/`duration`       |
+| 配置项                  | 类型                                | 说明                                                |
+| ----------------------- | ----------------------------------- | --------------------------------------------------- |
+| `onGlobalLoadingChange` | `(loading: boolean) => void`        | 全局 loading 状态变化回调(0→1 true,1→0 false)       |
+| `onLoadingChange`       | `(loading: boolean) => void`        | 单请求 loading 状态回调(该请求开始 true,结束 false) |
+| `slowThreshold`         | `number`                            | 慢请求阈值(ms),0 = 不启用(默认)                     |
+| `onSlowRequest`         | `(entry: SlowRequestEntry) => void` | 慢请求回调,含 `url`/`method`/`duration`             |
 
 > **全局 vs 单请求 Loading**:`onGlobalLoadingChange` 在第一个请求开始时触发 `true`,最后一个请求结束时触发 `false`,适合全局 loading 遮罩;`onLoadingChange` 对每个请求独立触发,适合按钮级别的 loading 状态。两者可同时使用。
 
@@ -990,9 +1007,9 @@ await request.post('/save', data, {
 
 ```typescript
 // 搜索输入防抖 300ms — 用户停止输入 300ms 后才发请求
-searchInput.addEventListener('input', (e) => {
+searchInput.addEventListener('input', e => {
   request.get('/search', {
-    params: { q: e.target.value },
+    query: { q: e.target.value },
     debounce: 300
   });
 });
@@ -1003,58 +1020,64 @@ searchInput.addEventListener('input', (e) => {
 ```typescript
 // 提交按钮节流 1 秒 — 1 秒内多次点击只发一次
 submitButton.addEventListener('click', () => {
-  request.post('/submit', formData, {
-    throttle: 1000
-  }).catch(err => {
-    if (err.code === 'ERR_THROTTLED') return; // 忽略节流拒绝
-    throw err;
-  });
+  request
+    .post('/submit', formData, {
+      throttle: 1000
+    })
+    .catch(err => {
+      if (err.code === 'ERR_THROTTLED') return; // 忽略节流拒绝
+      throw err;
+    });
 });
 ```
 
-> 防抖和节流的 key 默认为 `method:url:params:data`,相同 key 的请求才会互相影响。
+> 防抖和节流的 key 默认为 `method:url:query:body`,相同 key 的请求才会互相影响。
 
 ### 19. Auth 管理
 
 通过 `auth` 配置项自动附加 Token 和处理 Token 刷新。
 
 ```typescript
-const request = createRequest({
-  baseURL: '/api',
-  auth: {
-    // 自动附加 Authorization: Bearer <token>
-    getToken: () => localStorage.getItem('token'),
+const request = createRequest(
+  {
+    baseURL: '/api',
+    auth: {
+      // 自动附加 Authorization: Bearer <token>
+      getToken: () => localStorage.getItem('token'),
 
-    // 刷新 token,返回新 token
-    refreshToken: async () => {
-      const res = await fetch('/auth/refresh', {
-        headers: { 'refresh-token': localStorage.getItem('refreshToken') }
-      });
-      const { token } = await res.json();
-      localStorage.setItem('token', token);
-      return token;
-    },
+      // 刷新 token,返回新 token
+      refreshToken: async () => {
+        const res = await fetch('/auth/refresh', {
+          headers: { 'refresh-token': localStorage.getItem('refreshToken') }
+        });
+        const { token } = await res.json();
+        localStorage.setItem('token', token);
+        return token;
+      },
 
-    // 何时触发刷新 —— 默认 401,可自定义状态码或判断函数
-    // refreshOn: 403,                        // 403 时刷新
-    refreshOn: (status, response) => {        // 自定义判断
-      return status === 401 || response.headers.get('x-token-expired') === '1';
-    },
+      // 何时触发刷新 —— 默认 401,可自定义状态码或判断函数
+      // refreshOn: 403,                        // 403 时刷新
+      refreshOn: (status, response) => {
+        // 自定义判断
+        return status === 401 || response.headers.get('x-token-expired') === '1';
+      },
 
-    // 刷新失败时调用(如跳转登录页)
-    onUnauthorized: () => {
-      router.push('/login');
+      // 刷新失败时调用(如跳转登录页)
+      onUnauthorized: () => {
+        router.push('/login');
+      }
     }
-  }
-}, options);
+  },
+  options
+);
 ```
 
-| 属性            | 类型                                                         | 说明                              |
-| --------------- | ------------------------------------------------------------ | --------------------------------- |
-| `getToken`      | `() => string \| Promise<string>`                            | 获取当前 token,自动附加到请求头   |
-| `refreshToken`  | `() => Promise<string>`                                      | 刷新 token,返回新 token          |
-| `refreshOn`     | `number \| (status, response) => boolean`                    | 触发刷新的条件,默认 `401`        |
-| `onUnauthorized`| `() => void`                                                 | 刷新失败或无 `refreshToken` 时调用 |
+| 属性             | 类型                                      | 说明                               |
+| ---------------- | ----------------------------------------- | ---------------------------------- |
+| `getToken`       | `() => string \| Promise<string>`         | 获取当前 token,自动附加到请求头    |
+| `refreshToken`   | `() => Promise<string>`                   | 刷新 token,返回新 token            |
+| `refreshOn`      | `number \| (status, response) => boolean` | 触发刷新的条件,默认 `401`          |
+| `onUnauthorized` | `() => void`                              | 刷新失败或无 `refreshToken` 时调用 |
 
 **并发刷新去重**:多个请求同时触发刷新时,只调用一次 `refreshToken`,所有请求共享同一个刷新 Promise,刷新成功后全部自动重试。
 
@@ -1077,7 +1100,7 @@ const user = await request.get('/user', { schema: UserSchema });
 
 // 使用普通验证函数
 const user2 = await request.get('/user', {
-  schema: (data) => {
+  schema: data => {
     if (!data.id) throw new Error('Missing id');
     return data;
   }
@@ -1093,23 +1116,22 @@ const user2 = await request.get('/user', {
 ```typescript
 import { camelCase, snakeCase } from 'lodash';
 
-const request = createRequest({
-  baseURL: '/api',
-  // 发送前:camelCase → snake_case
-  transformRequest: (data) => {
-    if (typeof data !== 'object' || data === null) return data;
-    return Object.fromEntries(
-      Object.entries(data).map(([k, v]) => [snakeCase(k), v])
-    );
+const request = createRequest(
+  {
+    baseURL: '/api',
+    // 发送前:camelCase → snake_case
+    transformRequest: body => {
+      if (typeof body !== 'object' || body === null) return body;
+      return Object.fromEntries(Object.entries(body).map(([k, v]) => [snakeCase(k), v]));
+    },
+    // 接收后:snake_case → camelCase
+    transformResponse: data => {
+      if (typeof data !== 'object' || data === null) return data;
+      return Object.fromEntries(Object.entries(data).map(([k, v]) => [camelCase(k), v]));
+    }
   },
-  // 接收后:snake_case → camelCase
-  transformResponse: (data) => {
-    if (typeof data !== 'object' || data === null) return data;
-    return Object.fromEntries(
-      Object.entries(data).map(([k, v]) => [camelCase(k), v])
-    );
-  }
-}, options);
+  options
+);
 
 // 请求发送 { user_name: 'test' } (而非 { userName: 'test' })
 // 响应自动转为 { userName: 'test' } (而非 { user_name: 'test' })
@@ -1360,9 +1382,7 @@ function createFlatTypedClient<Paths, Prefix = '', Field = ''>(
 > 大多数场景下直接使用 `onUploadProgress` 配置项即可(详见 [上传进度跟踪](#12-上传进度跟踪)),无需手动调用此函数。
 
 ```typescript
-function createUploadProgressAdapter(
-  onUploadProgress: (event: UploadProgressEvent) => void
-): FetchAdapter | undefined;
+function createUploadProgressAdapter(onUploadProgress: (event: UploadProgressEvent) => void): FetchAdapter | undefined;
 ```
 
 ### 类型定义
@@ -1402,8 +1422,8 @@ interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omit<
   url?: string;
   method?: HttpMethod | string;
   headers?: Headers | Record<string, string>;
-  params?: Record<string, any>;
-  data?: any;
+  query?: Record<string, any>;
+  body?: BodyInit | Record<string, any> | null;
   responseType?: R;
   timeout?: number;
   signal?: AbortSignal;
@@ -1430,9 +1450,9 @@ type FetchAdapter = (url: string, init: FetchAdapterInit) => Promise<FetchAdapte
 
 // 上传进度事件
 interface UploadProgressEvent {
-  loaded: number;            // 已上传字节数
-  total: number;             // 总字节数(不可计算时为 0)
-  progress: number;          // 进度百分比 0-100
+  loaded: number; // 已上传字节数
+  total: number; // 总字节数(不可计算时为 0)
+  progress: number; // 进度百分比 0-100
   lengthComputable: boolean; // 总大小是否已知
 }
 ```
@@ -1468,6 +1488,7 @@ interface UploadProgressEvent {
 4. 替换 `config.headers.Authorization = 'xxx'` → `config.headers.set('Authorization', 'xxx')`
 5. 替换 `'axios-retry'` 配置 → `retry` 配置
 6. `instance.request(config)` → `instance(config)`(无 `.request` 方法)
+7. 替换 `data` → `body`(请求体)、`params` → `query`(查询参数)
 
 ### 为什么需要两种请求实例?
 
@@ -1495,4 +1516,4 @@ controller.abort();
 
 ## 📄 License
 
-[MIT](./LICENSE) License © 2026 [Soybean](https://github.com/soybeanjs)
+[MIT](./LICENSE) License © 2026 [SoybeanJS](https://github.com/soybeanjs)

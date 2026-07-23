@@ -205,8 +205,20 @@ Each feature is opt-in via `FetchRequestConfig`:
 
 `createTypedClient<Paths, Prefix, Field>(requestInstance, prefix?)` wraps a `RequestInstance` and exposes typed HTTP verbs inferred from a generated `paths` type. `createFlatTypedClient` does the same for `FlatRequestInstance` (never-throws semantics).
 
-- Path params (`{id}`) are replaced from `params.path` — missing required params throw.
-- Query params come from `params.query` (mapped to `query`); headers from `params.header`; body from `body` (passed through directly — no `data` translation needed anymore).
+The options use a **flattened API** — each OpenAPI parameter category is a top-level field, aligned with `FetchRequestConfig`:
+
+```ts
+client.get('/users/{id}', {
+  pathParams: { id: 42 },         // path params — replaces {id} in the URL (required when path params exist)
+  query: { include: 'posts' },     // query params — appended to URL (optional)
+  headers: { 'x-trace': 'abc' },  // header params (optional)
+  body: { ... },                  // request body (required/optional per spec)
+  timeout: 5000                   // passthrough FetchRequestConfig fields
+})
+```
+
+- `pathParams` replaces `{id}` placeholders — missing required params throw.
+- `query`, `headers`, and `body` are passed through directly to the fetch config.
 - `Field` extracts a single field from the success response (e.g. `'data'` to unwrap an envelope).
 
 ---

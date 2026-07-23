@@ -108,10 +108,7 @@ Never throws — determine success/failure via the return value:
 ```typescript
 import { createFlatRequest } from '@soybeanjs/fetch';
 
-const flatRequest = createFlatRequest(
-  { baseURL: 'https://api.example.com' },
-  options
-);
+const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, options);
 
 const { data, error, response } = await flatRequest({
   url: '/users',
@@ -138,7 +135,7 @@ const user = await $fetch<User>('/api/users/1');
 // POST request
 const created = await $fetch<User>('/api/users', {
   method: 'POST',
-  data: { name: 'John' }
+  body: { name: 'John' }
 });
 
 // Create instance with defaults
@@ -160,14 +157,14 @@ $fetch.native('https://example.com');
 
 ### RequestOption
 
-| Option            | Type       | Required | Description                                                                                  |
-| ----------------- | ---------- | -------- | -------------------------------------------------------------------------------------------- |
-| `transform`       | `Function` | Yes      | Transform response data to business data                                                     |
-| `onRequest`       | `Function` | No       | Pre-request interceptor (business layer, return-value mode), e.g. add token                  |
-| `isBackendSuccess`| `Function` | Yes      | Check if backend business logic succeeded                                                    |
-| `onBackendFail`   | `Function` | No       | Backend failure callback, e.g. token refresh. Return a new `FetchResponse` to retry          |
-| `onError`         | `Function` | No       | Request error handler, e.g. show error toast                                                 |
-| `backendErrorMsg` | `string`   | No       | Backend error message for constructing [`BackendError`](#error-identification)               |
+| Option             | Type       | Required | Description                                                                         |
+| ------------------ | ---------- | -------- | ----------------------------------------------------------------------------------- |
+| `transform`        | `Function` | Yes      | Transform response data to business data                                            |
+| `onRequest`        | `Function` | No       | Pre-request interceptor (business layer, return-value mode), e.g. add token         |
+| `isBackendSuccess` | `Function` | Yes      | Check if backend business logic succeeded                                           |
+| `onBackendFail`    | `Function` | No       | Backend failure callback, e.g. token refresh. Return a new `FetchResponse` to retry |
+| `onError`          | `Function` | No       | Request error handler, e.g. show error toast                                        |
+| `backendErrorMsg`  | `string`   | No       | Backend error message for constructing [`BackendError`](#error-identification)      |
 
 > Business errors (failed `isBackendSuccess`) are thrown as `BackendError` instances (extends `FetchError`, `error.code === 'BACKEND_ERROR'`).
 > Detect via `instanceof BackendError` or `error.code === BACKEND_ERROR_FLAG`, see [Error Identification](#error-identification).
@@ -206,12 +203,12 @@ const request = createRequest(
 );
 ```
 
-| Hook              | Trigger                      | Arguments                     |
-| ----------------- | ---------------------------- | ----------------------------- |
-| `onRequest`       | Before request is sent       | `FetchContext`                |
-| `onRequestError`  | Request fails (network/timeout) | `FetchContext` (with `error`) |
-| `onResponse`      | After response received & parsed | `FetchContext` (with `response`) |
-| `onResponseError` | Response has error status (4xx/5xx) | `FetchContext` (with `error`) |
+| Hook              | Trigger                             | Arguments                        |
+| ----------------- | ----------------------------------- | -------------------------------- |
+| `onRequest`       | Before request is sent              | `FetchContext`                   |
+| `onRequestError`  | Request fails (network/timeout)     | `FetchContext` (with `error`)    |
+| `onResponse`      | After response received & parsed    | `FetchContext` (with `response`) |
+| `onResponseError` | Response has error status (4xx/5xx) | `FetchContext` (with `error`)    |
 
 > **Difference from business hooks**: Transport hooks are configured in `FetchRequestConfig`, support arrays and the `FetchContext` pattern; business hooks are in `RequestOption`, single function, return-value mode. Transport hooks execute before business hooks.
 
@@ -242,14 +239,14 @@ if (fetchError.code === BACKEND_ERROR_FLAG) {
 
 `FetchError` provides these convenience properties:
 
-| Property       | Description                              |
-| -------------- | ---------------------------------------- |
-| `status`       | HTTP status code (alias `statusCode`)     |
-| `statusText`   | HTTP status text (alias `statusMessage`)  |
-| `data`         | Response data                             |
-| `code`         | Error code                                |
-| `response`     | Full `FetchResponse`                      |
-| `config`       | Request config                            |
+| Property     | Description                              |
+| ------------ | ---------------------------------------- |
+| `status`     | HTTP status code (alias `statusCode`)    |
+| `statusText` | HTTP status text (alias `statusMessage`) |
+| `data`       | Response data                            |
+| `code`       | Error code                               |
+| `response`   | Full `FetchResponse`                     |
+| `config`     | Request config                           |
 
 ### Request Pipeline
 
@@ -371,15 +368,15 @@ const stream = await request({
 
 Supported response types:
 
-| Type          | Description                                        |
-| ------------- | -------------------------------------------------- |
-| `json`        | JSON (default)                                     |
-| `auto`        | Auto-detect from `Content-Type`                    |
-| `text`        | Text                                               |
-| `blob`        | Blob file                                          |
-| `arraybuffer`  | ArrayBuffer                                        |
-| `stream`      | ReadableStream (incl. SSE `text/event-stream`)    |
-| `document`    | HTML/XML document (DOMParser, browser only)        |
+| Type          | Description                                    |
+| ------------- | ---------------------------------------------- |
+| `json`        | JSON (default)                                 |
+| `auto`        | Auto-detect from `Content-Type`                |
+| `text`        | Text                                           |
+| `blob`        | Blob file                                      |
+| `arraybuffer` | ArrayBuffer                                    |
+| `stream`      | ReadableStream (incl. SSE `text/event-stream`) |
+| `document`    | HTML/XML document (DOMParser, browser only)    |
 
 ### 3. State Management
 
@@ -402,8 +399,8 @@ request.state.token = 'new-token';
 request.state.userId = 123;
 
 // Built-in runtime state is also accessible
-request.state.loading.count;   // current concurrent request count
-request.state.cache.size;      // cache entry count
+request.state.loading.count; // current concurrent request count
+request.state.cache.size; // cache entry count
 ```
 
 #### Message Deduplication
@@ -452,7 +449,7 @@ const request = createRequest(
       retryDelay: retryCount => retryCount * 1000,
       retryCondition: error => {
         // Only retry on network errors or 5xx errors
-        return !error.response || (error.response.status >= 500);
+        return !error.response || error.response.status >= 500;
       }
     }
   },
@@ -460,11 +457,11 @@ const request = createRequest(
 );
 ```
 
-| Option            | Type                                       | Default                     | Description              |
-| ----------------- | ------------------------------------------ | --------------------------- | ------------------------ |
-| `retries`         | `number`                                   | `0`                         | Number of retries        |
-| `retryDelay`      | `(count, error) => number`                 | Linear backoff              | Retry delay (ms)         |
-| `retryCondition`  | `(error) => boolean \| Promise<boolean>`   | Network errors + retry codes | Retry condition          |
+| Option           | Type                                     | Default                      | Description       |
+| ---------------- | ---------------------------------------- | ---------------------------- | ----------------- |
+| `retries`        | `number`                                 | `0`                          | Number of retries |
+| `retryDelay`     | `(count, error) => number`               | Linear backoff               | Retry delay (ms)  |
+| `retryCondition` | `(error) => boolean \| Promise<boolean>` | Network errors + retry codes | Retry condition   |
 
 Default retry status codes: `408, 409, 425, 429, 500, 502, 503, 504`
 
@@ -475,10 +472,7 @@ Default retry status codes: `408, 409, 425, 429, 500, 502, 503, 504`
 Based on `AbortController`, distinguishes timeout from user abort:
 
 ```typescript
-const request = createRequest(
-  { timeout: 10000 },
-  options
-);
+const request = createRequest({ timeout: 10000 }, options);
 
 // Timeout throws FetchError with code 'ERR_TIMEOUT'
 // Error message format: [GET] "https://...": Request timeout of 10000ms exceeded
@@ -531,10 +525,10 @@ Use `request.raw()` to skip `transform` and get the full `FetchResponse` object.
 
 **Difference from `request()`:**
 
-| Method          | Return Value                  | Through transform? |
-| --------------- | ----------------------------- | ------------------ |
-| `request()`     | Transformed business data     | ✅ Yes             |
-| `request.raw()` | Full `FetchResponse` object   | ❌ No              |
+| Method          | Return Value                | Through transform? |
+| --------------- | --------------------------- | ------------------ |
+| `request()`     | Transformed business data   | ✅ Yes             |
+| `request.raw()` | Full `FetchResponse` object | ❌ No              |
 
 ```typescript
 // 1. Get custom response headers
@@ -566,7 +560,7 @@ Both `RequestInstance` and `FlatRequestInstance` provide shorthand methods for c
 // GET request
 const users = await request.get<User[]>('/users');
 const usersWithQuery = await request.get<User[]>('/users', {
-  params: { page: 1, pageSize: 10 }
+  query: { page: 1, pageSize: 10 }
 });
 
 // POST request
@@ -634,7 +628,7 @@ const response = await $fetch.raw('/api/users/404', {
 
 // Even 404 returns response without throwing FetchError
 console.log(response.status); // 404
-console.log(response.data);   // Error page data
+console.log(response.data); // Error page data
 ```
 
 ### 11. Type-Safe Client (Typed Client / OpenAPI)
@@ -653,17 +647,14 @@ After generating `paths` types with [openapi-typescript](https://openapi-ts.dev/
 import { createRequest, createTypedClient } from '@soybeanjs/fetch';
 import type { paths } from './openapi.d.ts';
 
-const request = createRequest(
-  { baseURL: 'https://api.example.com' },
-  {/* ... */}
-);
+const request = createRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
 
 // Field = 'data' to unwrap envelope structure
 const client = createTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
 
 // Full type inference for paths, params, body, and return value
 const menus = await client.get('/menu/list', {
-  params: { query: { page: 1, pageSize: 10 } }
+  query: { page: 1, pageSize: 10 }
 });
 
 // POST request
@@ -671,9 +662,14 @@ const loginResult = await client.post('/auth/login', {
   body: { username: 'admin', password: '123456' }
 });
 
+// Path params (replace {id} in the URL)
+const user = await client.get('/users/{id}', {
+  pathParams: { id: 1 }
+});
+
 // raw method — skip transform, return full FetchResponse
 const response = await client.raw.get('/menu/list', {
-  params: { query: { page: 1 } }
+  query: { page: 1 }
 });
 ```
 
@@ -684,15 +680,12 @@ Wraps a flat instance created by `createFlatRequest`, **never throws**:
 ```typescript
 import { createFlatRequest, createFlatTypedClient } from '@soybeanjs/fetch';
 
-const flatRequest = createFlatRequest(
-  { baseURL: 'https://api.example.com' },
-  {/* ... */}
-);
+const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
 
 const client = createFlatTypedClient<paths, '/api/v1', 'data'>(flatRequest, '/api/v1');
 
 const { data, error } = await client.get('/menu/list', {
-  params: { query: { page: 1 } }
+  query: { page: 1 }
 });
 
 if (error) {
@@ -710,11 +703,11 @@ Works with all APIs: `createRequest`, `createFlatRequest`, `$fetch` / `createFet
 
 **Cross-runtime support** — the library auto-selects the best mechanism:
 
-| Runtime              | Mechanism                        | `total` accuracy                 |
-| -------------------- | -------------------------------- | -------------------------------- |
-| Browser              | `XMLHttpRequest.upload.progress` | Accurate                         |
+| Runtime              | Mechanism                        | `total` accuracy                                         |
+| -------------------- | -------------------------------- | -------------------------------------------------------- |
+| Browser              | `XMLHttpRequest.upload.progress` | Accurate                                                 |
 | Node.js / Bun / Deno | `TransformStream` byte counting  | Accurate for known-size bodies (Blob/ArrayBuffer/string) |
-| CF Workers           | `TransformStream` byte counting  | May buffer (jump to 100%)        |
+| CF Workers           | `TransformStream` byte counting  | May buffer (jump to 100%)                                |
 
 > For `FormData` and raw `ReadableStream` bodies, the stream-based approach cannot determine the total size in advance. In this case `lengthComputable` is `false`, but `loaded` (bytes uploaded) still updates.
 
@@ -725,10 +718,7 @@ The most common scenario: set a progress callback only on upload endpoints.
 ```typescript
 import { createRequest } from '@soybeanjs/fetch';
 
-const request = createRequest(
-  { baseURL: 'https://api.example.com' },
-  { /* ... */ }
-);
+const request = createRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
 
 async function uploadFile(file: File) {
   const formData = new FormData();
@@ -752,7 +742,7 @@ import { $fetch } from '@soybeanjs/fetch';
 
 await $fetch('/upload', {
   method: 'POST',
-  data: formData,
+  body: formData,
   onUploadProgress: ({ progress }) => {
     progressBar.value = progress;
   }
@@ -763,12 +753,12 @@ await $fetch('/upload', {
 
 The `onUploadProgress` callback receives an `UploadProgressEvent` object:
 
-| Property            | Type      | Description                                                          |
-| ------------------- | --------- | -------------------------------------------------------------------- |
-| `loaded`            | `number`  | Bytes uploaded so far                                                |
-| `total`             | `number`  | Total bytes (0 if not computable)                                    |
-| `progress`          | `number`  | Upload percentage 0-100 (0 if not computable)                        |
-| `lengthComputable`  | `boolean` | Whether total size is known. When `false`, `total`/`progress` are 0 but `loaded` is still valid |
+| Property           | Type      | Description                                                                                     |
+| ------------------ | --------- | ----------------------------------------------------------------------------------------------- |
+| `loaded`           | `number`  | Bytes uploaded so far                                                                           |
+| `total`            | `number`  | Total bytes (0 if not computable)                                                               |
+| `progress`         | `number`  | Upload percentage 0-100 (0 if not computable)                                                   |
+| `lengthComputable` | `boolean` | Whether total size is known. When `false`, `total`/`progress` are 0 but `loaded` is still valid |
 
 > In browser (XHR) mode, the callback fires only when the total size is known. In stream mode, it always fires — use `lengthComputable` to distinguish.
 
@@ -807,12 +797,15 @@ async function handleUpload(file: File) {
 To track upload progress on all requests of an instance, set `onUploadProgress` when creating the instance:
 
 ```typescript
-const request = createRequest({
-  baseURL: 'https://api.example.com',
-  onUploadProgress: ({ progress }) => {
-    console.log(`Upload: ${progress}%`);
-  }
-}, options);
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    onUploadProgress: ({ progress }) => {
+      console.log(`Upload: ${progress}%`);
+    }
+  },
+  options
+);
 ```
 
 #### Advanced: createUploadProgressAdapter
@@ -822,16 +815,19 @@ const request = createRequest({
 ```typescript
 import { createRequest, createUploadProgressAdapter } from '@soybeanjs/fetch';
 
-const request = createRequest({
-  baseURL: 'https://api.example.com',
-  adapter: createUploadProgressAdapter(({ progress, loaded, lengthComputable }) => {
-    if (lengthComputable) {
-      console.log(`Upload: ${progress}%`);
-    } else {
-      console.log(`Uploaded ${loaded} bytes`);
-    }
-  })
-}, options);
+const request = createRequest(
+  {
+    baseURL: 'https://api.example.com',
+    adapter: createUploadProgressAdapter(({ progress, loaded, lengthComputable }) => {
+      if (lengthComputable) {
+        console.log(`Upload: ${progress}%`);
+      } else {
+        console.log(`Uploaded ${loaded} bytes`);
+      }
+    })
+  },
+  options
+);
 ```
 
 > When both `adapter` and `onUploadProgress` are set, `adapter` takes precedence and `onUploadProgress` is ignored.
@@ -866,27 +862,30 @@ const blob = await $fetch('/video.mp4', {
 
 The `onDownloadProgress` callback receives a `DownloadProgressEvent` (same shape as `UploadProgressEvent`):
 
-| Property            | Type      | Description                                              |
-| ------------------- | --------- | ------------------------------------------------------- |
-| `loaded`            | `number`  | Bytes downloaded so far                                 |
-| `total`             | `number`  | Total bytes (from `Content-Length`, 0 if unavailable)   |
-| `progress`          | `number`  | Download percentage 0-100 (0 if not computable)          |
-| `lengthComputable`  | `boolean` | Whether total size is known                             |
+| Property           | Type      | Description                                           |
+| ------------------ | --------- | ----------------------------------------------------- |
+| `loaded`           | `number`  | Bytes downloaded so far                               |
+| `total`            | `number`  | Total bytes (from `Content-Length`, 0 if unavailable) |
+| `progress`         | `number`  | Download percentage 0-100 (0 if not computable)       |
+| `lengthComputable` | `boolean` | Whether total size is known                           |
 
 ### 14. Request Cache
 
 Cache GET responses via the `cache` config option to avoid redundant requests. Supports TTL, max entries, custom keys, and method filtering.
 
 ```typescript
-const request = createRequest({
-  baseURL: '/api',
-  cache: {
-    ttl: 30000,              // cache for 30 seconds
-    methods: ['get'],        // cache GET only (default)
-    max: 100,                // max 100 entries (default), evicts oldest
-    // key: (config) => '...' // custom cache key
-  }
-}, options);
+const request = createRequest(
+  {
+    baseURL: '/api',
+    cache: {
+      ttl: 30000, // cache for 30 seconds
+      methods: ['get'], // cache GET only (default)
+      max: 100 // max 100 entries (default), evicts oldest
+      // key: (config) => '...' // custom cache key
+    }
+  },
+  options
+);
 
 // First request: makes a network call
 const a = await request.get('/user');
@@ -903,7 +902,7 @@ const c = await request.get('/user', { cache: false });
 // Clear all cached responses
 request.clearCache();
 
-// Delete a specific cache entry by key (default key format: "METHOD:url:params")
+// Delete a specific cache entry by key (default key format: "METHOD:url:query")
 request.deleteCache('GET:/api/user:id=1');
 
 // Clear cache after updating data — next request will re-fetch
@@ -916,28 +915,31 @@ request.clearCache();
 Merge identical in-flight requests via the `dedupe` config option. When multiple identical requests are in flight simultaneously, only one network call is made — all callers share the same Promise.
 
 ```typescript
-const request = createRequest({
-  baseURL: '/api',
-  dedupe: true
-}, options);
+const request = createRequest(
+  {
+    baseURL: '/api',
+    dedupe: true
+  },
+  options
+);
 
 // Two concurrent identical requests → one network call
-const [a, b] = await Promise.all([
-  request.get('/user'),
-  request.get('/user')
-]);
+const [a, b] = await Promise.all([request.get('/user'), request.get('/user')]);
 console.log(a === b); // true (same response)
 
 // Custom dedupe key
-const request2 = createRequest({
-  baseURL: '/api',
-  dedupe: {
-    key: (config) => `${config.method}:${config.url}`
-  }
-}, options);
+const request2 = createRequest(
+  {
+    baseURL: '/api',
+    dedupe: {
+      key: config => `${config.method}:${config.url}`
+    }
+  },
+  options
+);
 ```
 
-> Default dedupe key is `method:url:params:data`. Entries are automatically removed from the dedupe map when the request settles.
+> Default dedupe key is `method:url:query:body`. Entries are automatically removed from the dedupe map when the request settles.
 
 ### 16. Concurrency Limit
 
@@ -963,34 +965,37 @@ const results = await Promise.all(
 Automatically track request state via `onGlobalLoadingChange`, `onLoadingChange`, `slowThreshold`, and `onSlowRequest`.
 
 ```typescript
-const request = createRequest({
-  baseURL: '/api',
-  // Global loading: true when first request starts, false when last finishes
-  onGlobalLoadingChange: (loading) => {
-    store.globalLoading = loading;
+const request = createRequest(
+  {
+    baseURL: '/api',
+    // Global loading: true when first request starts, false when last finishes
+    onGlobalLoadingChange: loading => {
+      store.globalLoading = loading;
+    },
+    // Slow request: alert after 10 seconds
+    slowThreshold: 10000,
+    onSlowRequest: ({ url, method, duration }) => {
+      console.warn(`Slow request: ${method} ${url} took ${duration}ms`);
+      // Report to monitoring...
+    }
   },
-  // Slow request: alert after 10 seconds
-  slowThreshold: 10000,
-  onSlowRequest: ({ url, method, duration }) => {
-    console.warn(`Slow request: ${method} ${url} took ${duration}ms`);
-    // Report to monitoring...
-  }
-}, options);
+  options
+);
 
 // Per-request loading: true when this request starts, false when it finishes
 await request.post('/save', data, {
-  onLoadingChange: (loading) => {
+  onLoadingChange: loading => {
     saveBtnLoading.value = loading;
   }
 });
 ```
 
-| Option                    | Type                                       | Description                                          |
-| ------------------------- | ------------------------------------------ | ---------------------------------------------------- |
-| `onGlobalLoadingChange`   | `(loading: boolean) => void`               | Global loading state callback (0→1 true, 1→0 false)  |
-| `onLoadingChange`         | `(loading: boolean) => void`               | Per-request loading callback (starts true, ends false) |
-| `slowThreshold`           | `number`                                   | Slow request threshold (ms), 0 = disabled            |
-| `onSlowRequest`           | `(entry: SlowRequestEntry) => void`        | Slow request callback with `url`/`method`/`duration` |
+| Option                  | Type                                | Description                                            |
+| ----------------------- | ----------------------------------- | ------------------------------------------------------ |
+| `onGlobalLoadingChange` | `(loading: boolean) => void`        | Global loading state callback (0→1 true, 1→0 false)    |
+| `onLoadingChange`       | `(loading: boolean) => void`        | Per-request loading callback (starts true, ends false) |
+| `slowThreshold`         | `number`                            | Slow request threshold (ms), 0 = disabled              |
+| `onSlowRequest`         | `(entry: SlowRequestEntry) => void` | Slow request callback with `url`/`method`/`duration`   |
 
 > **Global vs Per-request Loading**: `onGlobalLoadingChange` fires `true` when the first request starts and `false` when the last finishes — ideal for global loading overlays. `onLoadingChange` fires independently for each request — ideal for button-level loading states. Both can be used simultaneously.
 
@@ -1238,9 +1243,7 @@ Create an upload progress adapter (lower-level, cross-runtime). Uses XHR in brow
 > For most cases, use the `onUploadProgress` config option directly (see [Upload Progress Tracking](#12-upload-progress-tracking)).
 
 ```typescript
-function createUploadProgressAdapter(
-  onUploadProgress: (event: UploadProgressEvent) => void
-): FetchAdapter | undefined;
+function createUploadProgressAdapter(onUploadProgress: (event: UploadProgressEvent) => void): FetchAdapter | undefined;
 ```
 
 ### Type Definitions
@@ -1262,8 +1265,8 @@ class FetchError<T = any> extends Error {
   config?: FetchRequestConfig;
   request?: Request;
   response?: FetchResponse<T>;
-  get status(): number | undefined;       // alias statusCode
-  get statusText(): string | undefined;   // alias statusMessage
+  get status(): number | undefined; // alias statusCode
+  get statusText(): string | undefined; // alias statusMessage
   get data(): T | undefined;
 }
 
@@ -1272,14 +1275,16 @@ class BackendError<ResponseData = any> extends FetchError<ResponseData> {
 }
 
 // Request config
-interface FetchRequestConfig<R extends ResponseType = 'json'>
-  extends Omit<RequestInit, 'method' | 'headers' | 'body' | 'signal'> {
+interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omit<
+  RequestInit,
+  'method' | 'headers' | 'body' | 'signal'
+> {
   baseURL?: string;
   url?: string;
   method?: HttpMethod | string;
   headers?: Headers | Record<string, string>;
-  params?: Record<string, any>;
-  data?: any;
+  query?: Record<string, any>;
+  body?: BodyInit | Record<string, any> | null;
   responseType?: R;
   timeout?: number;
   signal?: AbortSignal;
@@ -1306,9 +1311,9 @@ type FetchAdapter = (url: string, init: FetchAdapterInit) => Promise<FetchAdapte
 
 // Upload progress event
 interface UploadProgressEvent {
-  loaded: number;            // bytes uploaded
-  total: number;             // total bytes (0 if not computable)
-  progress: number;          // percentage 0-100
+  loaded: number; // bytes uploaded
+  total: number; // total bytes (0 if not computable)
+  progress: number; // percentage 0-100
   lengthComputable: boolean; // whether total size is known
 }
 ```
@@ -1324,17 +1329,17 @@ interface UploadProgressEvent {
 
 ### Difference from @soybeanjs/request?
 
-| Feature          | @soybeanjs/request    | @soybeanjs/fetch           |
-| ---------------- | --------------------- | -------------------------- |
-| Underlying      | Axios                 | Native Fetch               |
-| Runtime deps    | axios, axios-retry    | Zero dependencies          |
-| Headers         | AxiosHeaders (`[]`)   | Native Headers (`.set()/.get()`) |
-| Retry           | axios-retry           | Built-in                   |
-| Adapter         | Not supported         | ✅ Custom adapters         |
-| $fetch API      | Not supported         | ✅ ofetch-compatible       |
-| Transport hooks | Not supported         | ✅ onRequest/onResponse/... |
-| Auto response detection | Not supported | ✅ responseType: 'auto'   |
-| Business API    | ✅ createRequest etc. | ✅ Fully compatible         |
+| Feature                 | @soybeanjs/request    | @soybeanjs/fetch                 |
+| ----------------------- | --------------------- | -------------------------------- |
+| Underlying              | Axios                 | Native Fetch                     |
+| Runtime deps            | axios, axios-retry    | Zero dependencies                |
+| Headers                 | AxiosHeaders (`[]`)   | Native Headers (`.set()/.get()`) |
+| Retry                   | axios-retry           | Built-in                         |
+| Adapter                 | Not supported         | ✅ Custom adapters               |
+| $fetch API              | Not supported         | ✅ ofetch-compatible             |
+| Transport hooks         | Not supported         | ✅ onRequest/onResponse/...      |
+| Auto response detection | Not supported         | ✅ responseType: 'auto'          |
+| Business API            | ✅ createRequest etc. | ✅ Fully compatible              |
 
 ### How to migrate from @soybeanjs/request?
 
@@ -1344,6 +1349,7 @@ interface UploadProgressEvent {
 4. Replace `config.headers.Authorization = 'xxx'` → `config.headers.set('Authorization', 'xxx')`
 5. Replace `'axios-retry'` config → `retry` config
 6. `instance.request(config)` → `instance(config)` (no `.request` method)
+7. Replace `data` → `body` (request body), `params` → `query` (query parameters)
 
 ### Why two request instances?
 
@@ -1371,4 +1377,4 @@ controller.abort();
 
 ## 📄 License
 
-[MIT](./LICENSE) License © 2026 [Soybean](https://github.com/soybeanjs)
+[MIT](./LICENSE) License © 2026 [SoybeanJS](https://github.com/soybeanjs)

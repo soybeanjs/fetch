@@ -127,7 +127,12 @@ function bodyToStream(body: BodyInit | null | undefined): {
   if (body instanceof ArrayBuffer) {
     const bytes = new Uint8Array(body);
     return {
-      stream: new ReadableStream({ start(c) { c.enqueue(bytes); c.close(); } }),
+      stream: new ReadableStream({
+        start(c) {
+          c.enqueue(bytes);
+          c.close();
+        }
+      }),
       total: body.byteLength
     };
   }
@@ -137,7 +142,12 @@ function bodyToStream(body: BodyInit | null | undefined): {
     const view = body as ArrayBufferView;
     const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
     return {
-      stream: new ReadableStream({ start(c) { c.enqueue(bytes); c.close(); } }),
+      stream: new ReadableStream({
+        start(c) {
+          c.enqueue(bytes);
+          c.close();
+        }
+      }),
       total: view.byteLength
     };
   }
@@ -146,7 +156,12 @@ function bodyToStream(body: BodyInit | null | undefined): {
   if (typeof body === 'string') {
     const encoded = new TextEncoder().encode(body);
     return {
-      stream: new ReadableStream({ start(c) { c.enqueue(encoded); c.close(); } }),
+      stream: new ReadableStream({
+        start(c) {
+          c.enqueue(encoded);
+          c.close();
+        }
+      }),
       total: encoded.byteLength
     };
   }
@@ -155,7 +170,12 @@ function bodyToStream(body: BodyInit | null | undefined): {
   if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
     const encoded = new TextEncoder().encode(body.toString());
     return {
-      stream: new ReadableStream({ start(c) { c.enqueue(encoded); c.close(); } }),
+      stream: new ReadableStream({
+        start(c) {
+          c.enqueue(encoded);
+          c.close();
+        }
+      }),
       total: encoded.byteLength
     };
   }
@@ -210,9 +230,7 @@ function createXhrUploadAdapter(onUploadProgress: UploadProgressHandler): FetchA
         onUploadProgress({
           loaded: event.loaded,
           total: event.lengthComputable ? event.total : 0,
-          progress: event.lengthComputable && event.total > 0
-            ? Math.round((event.loaded / event.total) * 100)
-            : 0,
+          progress: event.lengthComputable && event.total > 0 ? Math.round((event.loaded / event.total) * 100) : 0,
           lengthComputable: event.lengthComputable
         });
       });
@@ -378,9 +396,7 @@ function createStreamUploadAdapter(onUploadProgress: UploadProgressHandler): Fet
  * );
  * ```
  */
-export function createUploadProgressAdapter(
-  onUploadProgress: UploadProgressHandler
-): FetchAdapter | undefined {
+export function createUploadProgressAdapter(onUploadProgress: UploadProgressHandler): FetchAdapter | undefined {
   // Priority 1: XHR (browser) — most accurate, native upload progress events
   if (typeof XMLHttpRequest !== 'undefined') {
     return createXhrUploadAdapter(onUploadProgress);

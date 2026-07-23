@@ -56,7 +56,7 @@ describe('createTypedClient', () => {
     const mockRequest = createMockRequest();
     const client = createTypedClient(mockRequest, '/api/v1') as any;
 
-    const result = await client.get('/users', { params: { query: { page: 1, pageSize: 10 } } });
+    const result = await client.get('/users', { query: { page: 1, pageSize: 10 } });
 
     expect(mockRequest).toHaveBeenCalledTimes(1);
     const config = mockRequest.mock.calls[0][0];
@@ -87,11 +87,11 @@ describe('createTypedClient', () => {
     expect(mockRequest.mock.calls[0][0].url).toBe('/base/items');
   });
 
-  it('replaces path params (e.g. /users/{id}) from params.path', async () => {
+  it('replaces path params (e.g. /users/{id}) from pathParams', async () => {
     const mockRequest = createMockRequest();
     const client = createTypedClient(mockRequest, '/api') as any;
 
-    await client.get('/users/{id}', { params: { path: { id: 42 } } });
+    await client.get('/users/{id}', { pathParams: { id: 42 } });
     expect(mockRequest.mock.calls[0][0].url).toBe('/api/users/42');
   });
 
@@ -99,7 +99,7 @@ describe('createTypedClient', () => {
     const mockRequest = createMockRequest();
     const client = createTypedClient(mockRequest, '/api') as any;
 
-    await client.get('/orgs/{org}/repos/{repo}', { params: { path: { org: 'soybeanjs', repo: 'fetch' } } });
+    await client.get('/orgs/{org}/repos/{repo}', { pathParams: { org: 'soybeanjs', repo: 'fetch' } });
     expect(mockRequest.mock.calls[0][0].url).toBe('/api/orgs/soybeanjs/repos/fetch');
   });
 
@@ -107,16 +107,16 @@ describe('createTypedClient', () => {
     const mockRequest = createMockRequest();
     const client = createTypedClient(mockRequest, '/api') as any;
 
-    expect(() => client.get('/users/{id}', { params: { path: {} } })).toThrow(/Missing required path parameter "id"/);
+    expect(() => client.get('/users/{id}', { pathParams: {} })).toThrow(/Missing required path parameter "id"/);
     // The request instance must never be called when path resolution fails.
     expect(mockRequest).not.toHaveBeenCalled();
   });
 
-  it('sets query params from params.query', async () => {
+  it('sets query params from query', async () => {
     const mockRequest = createMockRequest();
     const client = createTypedClient(mockRequest, '/api') as any;
 
-    await client.get('/search', { params: { query: { q: 'hello', limit: 5 } } });
+    await client.get('/search', { query: { q: 'hello', limit: 5 } });
     expect(mockRequest.mock.calls[0][0].query).toEqual({ q: 'hello', limit: 5 });
   });
 
@@ -130,12 +130,12 @@ describe('createTypedClient', () => {
     expect(config.body).toEqual({ name: 'Jane' });
   });
 
-  it('sets headers from params.header', async () => {
+  it('sets headers from headers', async () => {
     const mockRequest = createMockRequest();
     const client = createTypedClient(mockRequest, '/api') as any;
 
     const headers = new Headers({ 'x-custom': 'abc', authorization: 'Bearer token' });
-    await client.get('/users', { params: { header: headers } });
+    await client.get('/users', { headers });
     expect(mockRequest.mock.calls[0][0].headers).toBe(headers);
   });
 
@@ -191,7 +191,7 @@ describe('createTypedClient (integration with real createRequest)', () => {
     setFetchResponse({ status: 200, body: { ok: true, items: [1, 2, 3] } });
 
     const client = createTypedClient(makeRequest() as any, '/api/v1') as any;
-    const data = await client.get('/items', { params: { query: { page: 1 } } });
+    const data = await client.get('/items', { query: { page: 1 } });
 
     expect(data).toEqual({ ok: true, items: [1, 2, 3] });
 
@@ -205,7 +205,7 @@ describe('createTypedClient (integration with real createRequest)', () => {
 
     const client = createTypedClient(makeRequest() as any, '/api') as any;
     const data = await client.post('/users/{id}/posts', {
-      params: { path: { id: 42 } },
+      pathParams: { id: 42 },
       body: { title: 'hi' }
     });
 
@@ -247,7 +247,7 @@ describe('createFlatTypedClient', () => {
     const mockFlat = createMockFlatRequest();
     const client = createFlatTypedClient(mockFlat, '/api/v1') as any;
 
-    const result = await client.get('/users', { params: { query: { page: 1 } } });
+    const result = await client.get('/users', { query: { page: 1 } });
 
     expect(mockFlat).toHaveBeenCalledTimes(1);
     const config = mockFlat.mock.calls[0][0];
