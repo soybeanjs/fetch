@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.3](https://github.com/soybeanjs/fetch/compare/v0.0.2...v0.0.3) (2026-07-23)
+
+### &nbsp;&nbsp;&nbsp;🛠 Optimizations
+
+- **exports**: optimize exports &nbsp;-&nbsp; by @soybeanjs [<samp>(9e45c)</samp>](https://github.com/soybeanjs/fetch/commit/9e45c98)
+
+### &nbsp;&nbsp;&nbsp;❤️ Contributors
+
+[![soybeanjs](https://github.com/soybeanjs.png?size=48)](https://github.com/soybeanjs)&nbsp;&nbsp;
+
 ## [v0.0.2](https://github.com/soybeanjs/fetch/compare/v0.0.1...v0.0.2) (2026-07-23)
 
 ### &nbsp;&nbsp;&nbsp;🚀 Features
