@@ -1375,6 +1375,35 @@ const promise = request({
 controller.abort();
 ```
 
+## 🤖 Agent Skills
+
+This project ships with a set of built-in **Agent Skills** that provide development guidance for AI coding assistants (Trae / Cursor / Windsurf, etc.) working on this library. Each skill covers a common development task — including key file locations, code patterns, hard constraints, and common pitfalls — so that AI-generated code conforms to the library's two-layer architecture and conventions.
+
+### Installation
+
+Run the following command in your project root to install all skills:
+
+```bash
+npx skills add soybeanjs/fetch
+```
+
+Once installed, the skills are placed in the `skills/` directory and the AI assistant auto-invokes them when matching task scenarios occur.
+
+### Available Skills
+
+| Skill                    | Covered Task                                                                                                    | Key Files                           |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `fetch-platform-adapter` | Support new platforms (uniapp / WeChat Mini Programs / React Native), custom adapters, upload progress tracking | `adapter.ts`                        |
+| `fetch-business-hook`    | Add business hooks (`transform` / `isBackendSuccess` / `onBackendFail` / `onError` / `onRequest`)               | `core.ts` + `fetch.ts`              |
+| `fetch-transport-hook`   | Add ofetch-style transport hooks (`onRequest` / `onResponse` / `onRequestError` / `onResponseError`)            | `fetch.ts` + `types.ts`             |
+| `fetch-enhanced-feature` | Add enhanced features (cache / dedupe / concurrency / debounce / throttle / auth / schema / loading)            | `enhanced.ts`                       |
+| `fetch-retry-timeout`    | Configure retry count / delay / condition, timeout control, custom retryable status codes                       | `fetch.ts` + `options.ts`           |
+| `fetch-openapi-typing`   | Extend OpenAPI type-safe clients (`createTypedClient` / `createFlatTypedClient`)                                | `openapi.ts`                        |
+| `fetch-error-code`       | Add custom error codes, handle the `FetchError` / `BackendError` error model                                    | `error.ts` + `constant.ts`          |
+| `fetch-test-writer`      | Write tests following project conventions (vitest + global fetch mock + type-safe)                              | `test/helpers.ts` + `test/setup.ts` |
+
+> See the `SKILL.md` files in the [`skills/`](./skills) directory for each skill's detailed content.
+
 ## 📄 License
 
 [MIT](./LICENSE) License © 2026 [SoybeanJS](https://github.com/soybeanjs)

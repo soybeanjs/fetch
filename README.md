@@ -1514,6 +1514,35 @@ const promise = request({
 controller.abort();
 ```
 
+## 🤖 Agent Skills
+
+本项目内置了一组 **Agent Skills**,为 AI 编程助手(Trae / Cursor / Windsurf 等)提供针对本库的开发指导。每个 skill 对应一类常见开发任务,包含关键文件定位、代码模式、硬约束与常见陷阱,确保 AI 生成的代码符合本库的两层架构与约定。
+
+### 安装
+
+在项目根目录执行以下命令即可安装全部 skills:
+
+```bash
+npx skills add soybeanjs/fetch
+```
+
+安装后 skills 会放在 `skills/` 目录下,AI 助手会在匹配的任务场景中自动调用。
+
+### 可用 Skills
+
+| Skill                    | 覆盖任务                                                                                      | 关键文件                            |
+| ------------------------ | --------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `fetch-platform-adapter` | 支持新平台(uniapp / 微信小程序 / React Native),自定义适配器,上传进度跟踪                      | `adapter.ts`                        |
+| `fetch-business-hook`    | 添加业务钩子(`transform` / `isBackendSuccess` / `onBackendFail` / `onError` / `onRequest`)    | `core.ts` + `fetch.ts`              |
+| `fetch-transport-hook`   | 添加 ofetch 风格传输层钩子(`onRequest` / `onResponse` / `onRequestError` / `onResponseError`) | `fetch.ts` + `types.ts`             |
+| `fetch-enhanced-feature` | 添加增强功能(cache / dedupe / concurrency / debounce / throttle / auth / schema / loading)    | `enhanced.ts`                       |
+| `fetch-retry-timeout`    | 配置重试次数 / 延迟 / 条件、超时控制、自定义重试状态码                                        | `fetch.ts` + `options.ts`           |
+| `fetch-openapi-typing`   | 扩展 OpenAPI 类型安全客户端(`createTypedClient` / `createFlatTypedClient`)                    | `openapi.ts`                        |
+| `fetch-error-code`       | 添加自定义错误码、处理 `FetchError` / `BackendError` 错误模型                                 | `error.ts` + `constant.ts`          |
+| `fetch-test-writer`      | 按项目规范编写测试(vitest + 全局 fetch mock + 类型安全)                                       | `test/helpers.ts` + `test/setup.ts` |
+
+> 每个 skill 的详细内容见 [`skills/`](./skills) 目录下的 `SKILL.md`。
+
 ## 📄 License
 
 [MIT](./LICENSE) License © 2026 [SoybeanJS](https://github.com/soybeanjs)
