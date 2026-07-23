@@ -711,7 +711,7 @@ export interface RequestOption<ResponseData = any, ApiData = ResponseData> {
    *
    * @param response Fetch response (响应)
    */
-  isBackendSuccess: (response: FetchResponse<ResponseData>) => boolean;
+  isBackendSuccess?: (response: FetchResponse<ResponseData>) => boolean;
   /**
    * The backend error message (表示后端请求错误信息)
    *

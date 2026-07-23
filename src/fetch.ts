@@ -295,7 +295,7 @@ async function processResponse<ResponseData>(
   // 'auto' is treated like 'json' — the actual type was already resolved during parsing.
   if (responseType !== 'json' && responseType !== 'auto') return response;
 
-  if (opts.isBackendSuccess(response)) return response;
+  if (typeof opts.isBackendSuccess === 'undefined' || opts.isBackendSuccess?.(response) === true) return response;
 
   // Backend failure — try to recover
   if (allowBackendFail && opts.onBackendFail) {
