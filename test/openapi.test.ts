@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, expectTypeOf } from 'vitest';
+import type { paths } from '../examples/openapi';
 import { createRequest, createFlatRequest } from '../src/core';
 import { createTypedClient, createFlatTypedClient } from '../src/openapi';
+import type { FetchResponse } from '../src/types';
 import { setFetchResponse, getFetchCalls } from './helpers';
 
 // ============================================================
@@ -349,5 +351,62 @@ describe('createFlatTypedClient (integration with real createFlatRequest)', () =
 
     expect(result.data).toBeNull();
     expect(result.error).toBeDefined();
+  });
+});
+
+// ============================================================
+//  Type-level tests (responseType inference via MappedType)
+// ============================================================
+
+/**
+ * These tests assert the type-level behaviour introduced by threading `R` (the
+ * `responseType` option) through {@link ClientMethod} / {@link FlatClientMethod}.
+ *
+ * They use `expectTypeOf` so a regression in the type inference surfaces as a
+ * typecheck failure (the runtime assertions are no-ops).
+ */
+describe('createTypedClient — responseType type inference', () => {
+  it("infers `string` for responseType: 'text' on a text/plain endpoint", () => {
+    const request = createRequest();
+    const client = createTypedClient<paths, '/api'>(request, '/api');
+
+    const res = client.get('/text', { responseType: 'text' });
+    expectTypeOf(res).toEqualTypeOf<Promise<string>>();
+  });
+
+  it('defaults to the OpenAPI success response when responseType is omitted', () => {
+    const request = createRequest();
+    const client = createTypedClient<paths, '/api'>(request, '/api');
+
+    // /api/hello declares `application/json: { message?, timestamp?, method? }`.
+    const res = client.get('/hello');
+    expectTypeOf(res).toEqualTypeOf<Promise<{ message?: string; timestamp?: string; method?: string }>>();
+  });
+
+  it("infers `FileResponseData<Blob>` for responseType: 'blob'", () => {
+    const request = createRequest();
+    const client = createTypedClient<paths, '/api'>(request, '/api');
+
+    const res = client.get('/download', { responseType: 'blob' });
+    expectTypeOf(res).toEqualTypeOf<Promise<{ file: Blob; filename: string; contentType: string }>>();
+  });
+
+  it('preserves responseType inference on raw.get (FetchResponse<string>)', () => {
+    const request = createRequest();
+    const client = createTypedClient<paths, '/api'>(request, '/api');
+
+    const res = client.raw.get('/text', { responseType: 'text' });
+    // Only assert the `data` field type — the rest of FetchResponse is constant.
+    expectTypeOf(res).toEqualTypeOf<Promise<FetchResponse<string>>>();
+  });
+});
+
+describe('createFlatTypedClient — responseType type inference', () => {
+  it("infers `string` for the flat `data` when responseType: 'text'", () => {
+    const flat = createFlatRequest();
+    const client = createFlatTypedClient<paths, '/api'>(flat, '/api');
+
+    const res = client.get('/text', { responseType: 'text' });
+    expectTypeOf(res).toMatchTypeOf<Promise<{ data: string; error: null } | { data: null; error: unknown }>>();
   });
 });

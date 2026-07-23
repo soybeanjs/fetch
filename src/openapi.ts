@@ -1,5 +1,12 @@
 import type { FetchError } from './error';
-import type { FetchRequestConfig, FetchResponse, FlatRequestInstance, RequestInstance } from './types';
+import type {
+  FetchRequestConfig,
+  FetchResponse,
+  FlatRequestInstance,
+  MappedType,
+  RequestInstance,
+  ResponseType
+} from './types';
 
 // ============================================================
 //  Type Helpers (类型辅助工具)
@@ -169,12 +176,20 @@ export type RequestBodyOption<T> =
  * by the client or provided as typed top-level fields:
  * - `url` / `method` — set by the client itself
  * - `body` / `query` / `headers` — provided as typed top-level fields above
+ *
+ * The `R` type parameter flows through `responseType` so that callers can opt
+ * into a non-JSON response shape (e.g. `responseType: 'text'` → `string`,
+ * `responseType: 'blob'` → `FileResponseData<Blob>`). See {@link MappedType}.
+ *
+ * `R` 参数通过 `responseType` 字段流转,使调用方可以显式选择非 JSON 响应类型
+ * (例如 `responseType: 'text'` → `string`、`responseType: 'blob'` → `FileResponseData<Blob>`)。
+ * 详见 {@link MappedType}。
  */
-export type OpenapiRequestOptions<T> = PathParamsOption<T> &
+export type OpenapiRequestOptions<T, R extends ResponseType = 'json'> = PathParamsOption<T> &
   QueryParamsOption<T> &
   HeaderParamsOption<T> &
   RequestBodyOption<T> &
-  Omit<FetchRequestConfig, 'url' | 'method' | 'body' | 'query' | 'headers'>;
+  Omit<FetchRequestConfig<R>, 'url' | 'method' | 'body' | 'query' | 'headers'>;
 
 // ============================================================
 //  Client Method Types (客户端方法类型)
@@ -197,25 +212,43 @@ export type ClientResponse<Op, Field extends string> = Field extends ''
 
 /**
  * Typed client method (e.g. GET / POST / ...).
+ *
+ * The `R` type parameter is inferred from the per-request `responseType` option.
+ * When set (e.g. `responseType: 'text'`), the return type is mapped via
+ * {@link MappedType} (`'text'` → `string`, `'blob'` → `FileResponseData<Blob>`, …).
+ * When omitted, `R` defaults to `'json'` and the return type is the OpenAPI
+ * success response (or the `Field`-extracted value).
+ *
+ * `R` 类型参数从单次请求的 `responseType` 选项中推断。
+ * 设置时(如 `responseType: 'text'`),返回类型经 {@link MappedType} 映射
+ * (`'text'` → `string`、`'blob'` → `FileResponseData<Blob>` 等)。
+ * 省略时 `R` 默认为 `'json'`,返回类型为 OpenAPI 成功响应(或 `Field` 提取的值)。
  */
 export type ClientMethod<Paths extends Record<string, any>, M extends HttpMethod, Field extends string = ''> = <
   Path extends PathsWithMethod<Paths, M>,
-  Init extends OpenapiRequestOptions<OperationForPath<Paths[Path], M>>
+  R extends ResponseType = 'json'
 >(
   url: Path,
-  ...init: RequiredKeysOf<Init> extends never ? [init?: Init] : [init: Init]
-) => Promise<ClientResponse<OperationForPath<Paths[Path], M>, Field>>;
+  ...init: RequiredKeysOf<OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>> extends never
+    ? [init?: OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>]
+    : [init: OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>]
+) => Promise<MappedType<R, ClientResponse<OperationForPath<Paths[Path], M>, Field>>>;
 
 /**
  * Typed **raw** client method — bypasses `transform` and returns the full `FetchResponse`.
+ *
+ * Like {@link ClientMethod}, the `R` type parameter is inferred from `responseType`
+ * and the response `data` is mapped via {@link MappedType}.
  */
 export type RawClientMethod<Paths extends Record<string, any>, M extends HttpMethod> = <
   Path extends PathsWithMethod<Paths, M>,
-  Init extends OpenapiRequestOptions<OperationForPath<Paths[Path], M>>
+  R extends ResponseType = 'json'
 >(
   url: Path,
-  ...init: RequiredKeysOf<Init> extends never ? [init?: Init] : [init: Init]
-) => Promise<FetchResponse<SuccessResponse<OperationForPath<Paths[Path], M>>>>;
+  ...init: RequiredKeysOf<OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>> extends never
+    ? [init?: OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>]
+    : [init: OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>]
+) => Promise<FetchResponse<MappedType<R, SuccessResponse<OperationForPath<Paths[Path], M>>>>>;
 
 /**
  * The typed client interface, providing a method for each HTTP verb.
@@ -235,27 +268,42 @@ export type TypedClient<Paths extends Record<string, any>, Field extends string 
 
 /**
  * Flat response for OpenAPI requests — never throws.
+ *
+ * The `R` type parameter is inferred from the per-request `responseType` option
+ * and maps the success `data` via {@link MappedType}. Defaults to `'json'`,
+ * yielding `ClientResponse<T, Field>` (the OpenAPI success response shape).
  */
-export type FlatOpenapiResponse<T, Field extends string = ''> =
-  | { data: ClientResponse<T, Field>; error: null; response: FetchResponse }
+export type FlatOpenapiResponse<T, Field extends string = '', R extends ResponseType = 'json'> =
+  | { data: MappedType<R, ClientResponse<T, Field>>; error: null; response: FetchResponse }
   | { data: null; error: FetchError; response?: FetchResponse };
 
 /**
  * Typed flat client method.
+ *
+ * The `R` type parameter is inferred from `responseType` (see {@link ClientMethod}).
  */
 export type FlatClientMethod<Paths extends Record<string, any>, M extends HttpMethod, Field extends string = ''> = <
   Path extends PathsWithMethod<Paths, M>,
-  Init extends OpenapiRequestOptions<OperationForPath<Paths[Path], M>>
+  R extends ResponseType = 'json'
 >(
   url: Path,
-  ...init: RequiredKeysOf<Init> extends never ? [init?: Init] : [init: Init]
-) => Promise<FlatOpenapiResponse<OperationForPath<Paths[Path], M>, Field>>;
+  ...init: RequiredKeysOf<OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>> extends never
+    ? [init?: OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>]
+    : [init: OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>]
+) => Promise<FlatOpenapiResponse<OperationForPath<Paths[Path], M>, Field, R>>;
 
 /**
  * Flat response for **raw** OpenAPI requests — never throws, bypasses `transform`.
+ *
+ * The `R` type parameter is inferred from `responseType` and maps the response
+ * `data` via {@link MappedType}.
  */
-export type FlatRawOpenapiResponse<T> =
-  | { data: FetchResponse<SuccessResponse<T>>; error: null; response: FetchResponse<SuccessResponse<T>> }
+export type FlatRawOpenapiResponse<T, R extends ResponseType = 'json'> =
+  | {
+      data: FetchResponse<MappedType<R, SuccessResponse<T>>>;
+      error: null;
+      response: FetchResponse<MappedType<R, SuccessResponse<T>>>;
+    }
   | { data: null; error: FetchError; response?: FetchResponse };
 
 /**
@@ -263,11 +311,13 @@ export type FlatRawOpenapiResponse<T> =
  */
 export type RawFlatClientMethod<Paths extends Record<string, any>, M extends HttpMethod> = <
   Path extends PathsWithMethod<Paths, M>,
-  Init extends OpenapiRequestOptions<OperationForPath<Paths[Path], M>>
+  R extends ResponseType = 'json'
 >(
   url: Path,
-  ...init: RequiredKeysOf<Init> extends never ? [init?: Init] : [init: Init]
-) => Promise<FlatRawOpenapiResponse<OperationForPath<Paths[Path], M>>>;
+  ...init: RequiredKeysOf<OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>> extends never
+    ? [init?: OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>]
+    : [init: OpenapiRequestOptions<OperationForPath<Paths[Path], M>, R>]
+) => Promise<FlatRawOpenapiResponse<OperationForPath<Paths[Path], M>, R>>;
 
 /**
  * The typed flat client interface.
@@ -376,17 +426,17 @@ export function createTypedClient<
   const client = {} as TypedClient<PathsRemovedPrefix<Paths, Prefix>, Field>;
 
   for (const method of methods) {
-    client[method] = ((url: string, options?: any) => {
+    (client as any)[method] = (url: string, options?: any) => {
       return requestInstance(buildFetchConfig(url, prefix, method, options));
-    }) as TypedClient<PathsRemovedPrefix<Paths, Prefix>, Field>[typeof method];
+    };
   }
 
   const rawClient = {} as TypedClient<PathsRemovedPrefix<Paths, Prefix>, Field>['raw'];
 
   for (const method of methods) {
-    rawClient[method] = ((url: string, options?: any) => {
+    (rawClient as any)[method] = (url: string, options?: any) => {
       return requestInstance.raw(buildFetchConfig(url, prefix, method, options));
-    }) as TypedClient<PathsRemovedPrefix<Paths, Prefix>, Field>['raw'][typeof method];
+    };
   }
 
   client.raw = rawClient;
@@ -435,17 +485,17 @@ export function createFlatTypedClient<
   const client = {} as FlatTypedClient<PathsRemovedPrefix<Paths, Prefix>, Field>;
 
   for (const method of methods) {
-    client[method] = ((url: string, options?: any) => {
+    (client as any)[method] = (url: string, options?: any) => {
       return flatRequestInstance(buildFetchConfig(url, prefix, method, options));
-    }) as FlatTypedClient<PathsRemovedPrefix<Paths, Prefix>, Field>[typeof method];
+    };
   }
 
   const rawClient = {} as FlatTypedClient<PathsRemovedPrefix<Paths, Prefix>, Field>['raw'];
 
   for (const method of methods) {
-    rawClient[method] = ((url: string, options?: any) => {
+    (rawClient as any)[method] = (url: string, options?: any) => {
       return flatRequestInstance.raw(buildFetchConfig(url, prefix, method, options));
-    }) as FlatTypedClient<PathsRemovedPrefix<Paths, Prefix>, Field>['raw'][typeof method];
+    };
   }
 
   client.raw = rawClient;
