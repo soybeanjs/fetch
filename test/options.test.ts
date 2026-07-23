@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { createDefaultOptions, createFetchConfig, createRetryOptions } from '../src/options';
 import { isHttpSuccess } from '../src/shared';
 import { serializeParams } from '../src/utils';
 import { FetchError } from '../src/error';
+import { createDefaultOptions, createFetchConfig, createRetryOptions } from '../src/options';
 import type { FetchResponse } from '../src/types';
 
 function makeResponse(overrides: Partial<FetchResponse> = {}): FetchResponse {
@@ -100,7 +100,7 @@ describe('createFetchConfig', () => {
   });
 
   it('preserves user paramsSerializer', () => {
-    const paramsSerializer = (p: any) => 'x=1';
+    const paramsSerializer = (_p: any) => 'x=1';
     const config = createFetchConfig({ paramsSerializer });
     expect(config.paramsSerializer).toBe(paramsSerializer);
   });

@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { $fetch, createFetch, fetchCore, mergeConfig, resolveDefaults } from '../src/fetch';
-import { FetchError } from '../src/error';
 import { isHttpSuccess } from '../src/shared';
 import { serializeParams } from '../src/utils';
-import { getFetchCalls, setFetchImplementation, setFetchResponse } from './helpers';
+import { FetchError, BackendError } from '../src/error';
+import { $fetch, createFetch, fetchCore, mergeConfig, resolveDefaults, processResponse } from '../src/fetch';
+import type { FetchRequestConfig, FetchResponse, RequestOption } from '../src/types';
+import {
+  getFetchCalls,
+  getFetchCallCount,
+  setFetchImplementation,
+  setFetchResponse,
+  createMockAdapterResponse
+} from './helpers';
 
 // ============================================================
 //  $fetch basic usage
@@ -54,19 +61,19 @@ describe('$fetch basic usage', () => {
 
   it('responseType text returns string', async () => {
     setFetchResponse({ body: 'plain text', contentType: 'text/plain' });
-    const data = await $fetch<string>('/test', { responseType: 'text' });
+    const data = await $fetch<string, 'text'>('/test', { responseType: 'text' });
     expect(data).toBe('plain text');
   });
 
   it('responseType blob returns Blob', async () => {
     setFetchResponse({ body: 'binary', contentType: 'application/octet-stream' });
-    const data = await $fetch<Blob>('/test', { responseType: 'blob' });
+    const data = await $fetch<Blob, 'blob'>('/test', { responseType: 'blob' });
     expect(data).toBeInstanceOf(Blob);
   });
 
   it('responseType arraybuffer returns ArrayBuffer', async () => {
     setFetchResponse({ body: 'binary', contentType: 'application/octet-stream' });
-    const data = await $fetch<ArrayBuffer>('/test', { responseType: 'arraybuffer' });
+    const data = await $fetch<ArrayBuffer, 'arraybuffer'>('/test', { responseType: 'arraybuffer' });
     expect(data).toBeInstanceOf(ArrayBuffer);
   });
 
@@ -144,7 +151,10 @@ describe('fetchCore: retry', () => {
       if (callCount <= 1) {
         return new Response('Service Unavailable', { status: 503, headers: { 'content-type': 'text/plain' } });
       }
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
     });
 
     const promise = fetchCore({
@@ -187,7 +197,10 @@ describe('fetchCore: retry', () => {
     setFetchImplementation(() => {
       callCount++;
       if (callCount === 1) throw new TypeError('Network Error');
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
     });
 
     const promise = fetchCore({
@@ -238,7 +251,10 @@ describe('fetchCore: retry', () => {
     setFetchImplementation(() => {
       callCount++;
       if (callCount === 1) throw new TypeError('Network Error');
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
     });
 
     const promise = fetchCore({
@@ -265,12 +281,15 @@ describe('fetchCore: retry', () => {
 describe('fetchCore: timeout', () => {
   it('throws ERR_TIMEOUT when timeout exceeded', async () => {
     vi.useFakeTimers();
-    // Mock fetch that never resolves on its own, but rejects on abort
-    setFetchImplementation((_url, init) => new Promise((_resolve, reject) => {
-      init?.signal?.addEventListener('abort', () => {
-        reject(new DOMException('The user aborted a request.', 'AbortError'));
-      });
-    }));
+    // Mock fetch that never resolves on its own, but rejects on abort.
+    setFetchImplementation(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The user aborted a request.', 'AbortError'));
+          });
+        })
+    );
 
     const promise = fetchCore({
       url: '/test',
@@ -282,14 +301,21 @@ describe('fetchCore: timeout', () => {
       paramsSerializer: serializeParams
     } as any);
 
-    await vi.advanceTimersByTimeAsync(1000);
+    // Attach the rejection assertion handler SYNCHRONOUSLY before advancing
+    // timers. Otherwise the timeout fires inside `advanceTimersByTimeAsync`,
+    // the promise rejects, and Node emits a `PromiseRejectionHandledWarning`
+    // because the handler is attached asynchronously in the next `await`.
+    const assertion = expect(promise).rejects.toMatchObject({ code: 'ERR_TIMEOUT' });
 
-    await expect(promise).rejects.toMatchObject({ code: 'ERR_TIMEOUT' });
+    await vi.advanceTimersByTimeAsync(1000);
+    await assertion;
     vi.useRealTimers();
   });
 
   it('throws ERR_NETWORK on network error', async () => {
-    setFetchImplementation(() => { throw new TypeError('Network Error'); });
+    setFetchImplementation(() => {
+      throw new TypeError('Network Error');
+    });
 
     await expect(
       fetchCore({
@@ -367,7 +393,9 @@ describe('fetchCore: hooks', () => {
   });
 
   it('onRequestError hook is called on network error', async () => {
-    setFetchImplementation(() => { throw new TypeError('Network Error'); });
+    setFetchImplementation(() => {
+      throw new TypeError('Network Error');
+    });
     const hook = vi.fn();
 
     await expect(
@@ -409,8 +437,12 @@ describe('fetchCore: hooks', () => {
   it('hooks support arrays (sequential)', async () => {
     setFetchResponse({ body: { ok: true } });
     const order: string[] = [];
-    const h1 = () => { order.push('h1'); };
-    const h2 = () => { order.push('h2'); };
+    const h1 = () => {
+      order.push('h1');
+    };
+    const h2 = () => {
+      order.push('h2');
+    };
 
     await fetchCore({
       url: '/test',
@@ -427,7 +459,9 @@ describe('fetchCore: hooks', () => {
 
   it('hooks support async functions', async () => {
     setFetchResponse({ body: { ok: true } });
-    const hook = vi.fn(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const hook = vi.fn(async () => {
+      await new Promise<void>(r => setTimeout(r, 0));
+    });
 
     await fetchCore({
       url: '/test',
@@ -587,7 +621,7 @@ describe('mergeConfig', () => {
   });
 
   it('headers are merged (not replaced)', () => {
-    const defaults = resolveDefaults({ headers: { 'X-Default': '1', 'Accept': 'text/plain' } });
+    const defaults = resolveDefaults({ headers: { 'X-Default': '1', Accept: 'text/plain' } });
     const merged = mergeConfig(defaults, { url: '/test', headers: { 'X-Custom': '2' } });
     expect(merged.headers.get('X-Default')).toBe('1');
     expect(merged.headers.get('X-Custom')).toBe('2');
@@ -612,7 +646,10 @@ describe('resolveDefaults', () => {
   });
 
   it('respects user-provided responseType', () => {
-    const resolved = resolveDefaults({ responseType: 'text' });
+    // resolveDefaults accepts CreateFetchDefaults (default responseType 'json').
+    // We deliberately test that a non-default responseType is preserved through the resolver,
+    // so we cast through unknown to bypass the invariant generic on R.
+    const resolved = resolveDefaults({ responseType: 'text' } as unknown as FetchRequestConfig);
     expect(resolved.responseType).toBe('text');
   });
 });
@@ -635,5 +672,261 @@ describe('createFetch', () => {
     const fetchFn = createFetch({ baseURL: 'https://api.example.com' });
     await fetchFn('/test');
     expect(getFetchCalls()[0].url).toBe('https://api.example.com/test');
+  });
+});
+
+// ============================================================
+//  fetchCore: custom adapter
+// ============================================================
+
+describe('fetchCore: custom adapter', () => {
+  it('uses the provided adapter instead of native fetch', async () => {
+    const adapter = vi.fn(async () =>
+      createMockAdapterResponse({
+        status: 200,
+        body: { ok: true }
+      })
+    );
+
+    const data = await fetchCore({
+      url: '/test',
+      method: 'GET',
+      headers: new Headers(),
+      responseType: 'json',
+      validateStatus: isHttpSuccess,
+      paramsSerializer: serializeParams,
+      adapter
+    } as any);
+
+    expect(adapter).toHaveBeenCalledTimes(1);
+    expect(data.data).toEqual({ ok: true });
+    // Native fetch should NOT have been called
+    expect(getFetchCallCount()).toBe(0);
+  });
+
+  it('passes url and init to the adapter', async () => {
+    const adapter = vi.fn(async (_url: string, _init: any) => createMockAdapterResponse({ body: {} }));
+    await fetchCore({
+      url: 'https://custom.example.com/api',
+      method: 'POST',
+      headers: new Headers({ 'x-test': '1' }),
+      responseType: 'json',
+      validateStatus: isHttpSuccess,
+      paramsSerializer: serializeParams,
+      data: { hello: 'world' },
+      adapter
+    } as any);
+
+    expect(adapter).toHaveBeenCalledTimes(1);
+    const [calledUrl, calledInit] = adapter.mock.calls[0] as [string, any];
+    expect(calledUrl).toBe('https://custom.example.com/api');
+    expect(calledInit.method).toBe('POST');
+    expect(calledInit.headers.get('x-test')).toBe('1');
+    // JSON-serializable objects are stringified and content-type set to application/json
+    expect(calledInit.body).toBe(JSON.stringify({ hello: 'world' }));
+    expect(calledInit.headers.get('content-type')).toBe('application/json');
+  });
+
+  it('custom adapter takes precedence over onUploadProgress', async () => {
+    const adapter = vi.fn(async () => createMockAdapterResponse({ body: {} }));
+    const onUploadProgress = vi.fn();
+
+    await fetchCore({
+      url: '/test',
+      method: 'POST',
+      headers: new Headers(),
+      responseType: 'json',
+      validateStatus: isHttpSuccess,
+      paramsSerializer: serializeParams,
+      data: 'hello',
+      adapter,
+      onUploadProgress
+    } as any);
+
+    // Custom adapter should be used, not the auto-created upload-progress adapter
+    expect(adapter).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================
+//  fetchCore: onDownloadProgress
+// ============================================================
+
+describe('fetchCore: onDownloadProgress', () => {
+  it('reports download progress for streaming bodies', async () => {
+    // Build a response with a known content-length and a chunked body.
+    // fetchCore consumes the body during parseResponseBody, so progress
+    // events should fire before fetchCore resolves.
+    const bodyText = 'Hello, World!';
+    const encoder = new TextEncoder();
+    const chunks = [encoder.encode('Hello, '), encoder.encode('World!')];
+
+    const stream = new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk);
+        controller.close();
+      }
+    });
+
+    const adapter = vi.fn(
+      async (): Promise<any> => ({
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers({ 'content-type': 'text/plain', 'content-length': String(bodyText.length) }),
+        body: stream,
+        text: () => Promise.resolve(bodyText),
+        blob: () => Promise.resolve(new Blob([bodyText])),
+        arrayBuffer: () => Promise.resolve(encoder.encode(bodyText).buffer)
+      })
+    );
+
+    const progressEvents: { loaded: number; total: number; progress: number }[] = [];
+
+    await fetchCore({
+      url: '/test',
+      method: 'GET',
+      headers: new Headers(),
+      responseType: 'text',
+      validateStatus: isHttpSuccess,
+      paramsSerializer: serializeParams,
+      adapter,
+      onDownloadProgress: (e: { loaded: number; total: number; progress: number }) => {
+        progressEvents.push({ loaded: e.loaded, total: e.total, progress: e.progress });
+      }
+    } as any);
+
+    expect(progressEvents.length).toBeGreaterThanOrEqual(2);
+    expect(progressEvents[0].loaded).toBe(7); // 'Hello, '
+    expect(progressEvents[progressEvents.length - 1].loaded).toBe(13); // full body
+    expect(progressEvents[progressEvents.length - 1].total).toBe(13);
+    expect(progressEvents[progressEvents.length - 1].progress).toBe(100);
+  });
+
+  it('does not crash when body is null (e.g. 204)', async () => {
+    const adapter = vi.fn(
+      async (): Promise<any> => ({
+        status: 204,
+        statusText: 'No Content',
+        headers: new Headers(),
+        body: null,
+        text: () => Promise.resolve(''),
+        blob: () => Promise.resolve(new Blob()),
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0))
+      })
+    );
+
+    const onDownloadProgress = vi.fn();
+
+    await fetchCore({
+      url: '/test',
+      method: 'GET',
+      headers: new Headers(),
+      responseType: 'json',
+      validateStatus: isHttpSuccess,
+      paramsSerializer: serializeParams,
+      adapter,
+      onDownloadProgress
+    } as any);
+
+    // No progress events should fire for a null body
+    expect(onDownloadProgress).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+//  processResponse
+// ============================================================
+
+describe('processResponse', () => {
+  function makeResponse(overrides: Partial<FetchResponse> = {}): FetchResponse {
+    return {
+      data: { code: 200, message: 'ok' },
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({ 'content-type': 'application/json' }),
+      config: {
+        url: '/test',
+        method: 'GET',
+        headers: new Headers(),
+        responseType: 'json',
+        validateStatus: isHttpSuccess,
+        paramsSerializer: serializeParams
+      } as any,
+      ...overrides
+    };
+  }
+
+  function makeInstance(): any {
+    return vi.fn(async () => makeResponse());
+  }
+
+  const baseOpts: RequestOption = {
+    transform: (r: FetchResponse) => r.data,
+    isBackendSuccess: (r: FetchResponse) => (r.data as any)?.code === 200,
+    backendErrorMsg: 'Backend error'
+  };
+
+  it('returns response unchanged when isBackendSuccess is true', async () => {
+    const response = makeResponse({ data: { code: 200, message: 'ok' } });
+    const result = await processResponse(response, baseOpts, makeInstance(), true);
+    expect(result).toBe(response);
+  });
+
+  it('throws BackendError when isBackendSuccess is false and no onBackendFail', async () => {
+    const response = makeResponse({ data: { code: 401, message: 'Unauthorized' } });
+    await expect(processResponse(response, baseOpts, makeInstance(), true)).rejects.toBeInstanceOf(BackendError);
+  });
+
+  it('throws BackendError when allowBackendFail is false', async () => {
+    const response = makeResponse({ data: { code: 401, message: 'Unauthorized' } });
+    const onBackendFail = vi.fn(async () => makeResponse({ data: { code: 200 } }));
+    const opts = { ...baseOpts, onBackendFail };
+    await expect(processResponse(response, opts, makeInstance(), false)).rejects.toBeInstanceOf(BackendError);
+    expect(onBackendFail).not.toHaveBeenCalled();
+  });
+
+  it('calls onBackendFail and re-validates the returned response', async () => {
+    const failedResponse = makeResponse({ data: { code: 401 } });
+    const recoveredResponse = makeResponse({ data: { code: 200, recovered: true } });
+    const onBackendFail = vi.fn(async () => recoveredResponse);
+    const opts = { ...baseOpts, onBackendFail };
+
+    const result = await processResponse(failedResponse, opts, makeInstance(), true);
+    expect(onBackendFail).toHaveBeenCalledTimes(1);
+    expect(result).toBe(recoveredResponse);
+  });
+
+  it('does not call onBackendFail again on the re-validated response', async () => {
+    const failedResponse = makeResponse({ data: { code: 401 } });
+    // The recovery still fails isBackendSuccess
+    const stillFailing = makeResponse({ data: { code: 401 } });
+    const onBackendFail = vi.fn(async () => stillFailing);
+    const opts = { ...baseOpts, onBackendFail };
+
+    await expect(processResponse(failedResponse, opts, makeInstance(), true)).rejects.toBeInstanceOf(BackendError);
+    // Should only be called once — not again for the re-validated still-failing response
+    expect(onBackendFail).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws BackendError when onBackendFail returns null', async () => {
+    const failedResponse = makeResponse({ data: { code: 401 } });
+    const onBackendFail = vi.fn(async () => null);
+    const opts = { ...baseOpts, onBackendFail };
+
+    await expect(processResponse(failedResponse, opts, makeInstance(), true)).rejects.toBeInstanceOf(BackendError);
+    expect(onBackendFail).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips isBackendSuccess for non-json response types', async () => {
+    const isBackendSuccess = vi.fn(() => true);
+    const opts = { ...baseOpts, isBackendSuccess };
+    const response = makeResponse({
+      data: 'plain text',
+      config: { ...makeResponse().config, responseType: 'text' } as any
+    });
+
+    const result = await processResponse(response, opts, makeInstance(), true);
+    expect(result).toBe(response);
+    expect(isBackendSuccess).not.toHaveBeenCalled();
   });
 });

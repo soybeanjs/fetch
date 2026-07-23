@@ -97,9 +97,7 @@ describe('URL utilities', () => {
     });
 
     it('returns url when it is absolute, ignoring baseURL', () => {
-      expect(resolveURL('https://other.com/users', 'https://api.example.com')).toBe(
-        'https://other.com/users'
-      );
+      expect(resolveURL('https://other.com/users', 'https://api.example.com')).toBe('https://other.com/users');
     });
 
     it('prepends baseURL otherwise', () => {
@@ -436,7 +434,7 @@ describe('callHooks', () => {
         headers: new Headers(),
         responseType: 'json'
       }
-    } as any);
+    }) as any;
 
   it('does nothing when hooks are undefined', async () => {
     await expect(callHooks(makeContext(), undefined)).resolves.toBeUndefined();
@@ -452,9 +450,15 @@ describe('callHooks', () => {
 
   it('calls each hook in an array in order', async () => {
     const order: string[] = [];
-    const hook1 = vi.fn(() => order.push('1'));
-    const hook2 = vi.fn(() => order.push('2'));
-    const hook3 = vi.fn(() => order.push('3'));
+    const hook1 = vi.fn(() => {
+      order.push('1');
+    });
+    const hook2 = vi.fn(() => {
+      order.push('2');
+    });
+    const hook3 = vi.fn(() => {
+      order.push('3');
+    });
     await callHooks(makeContext(), [hook1, hook2, hook3]);
     expect(order).toEqual(['1', '2', '3']);
   });
@@ -465,7 +469,9 @@ describe('callHooks', () => {
       await Promise.resolve();
       order.push('async');
     });
-    const syncHook = vi.fn(() => order.push('sync'));
+    const syncHook = vi.fn(() => {
+      order.push('sync');
+    });
     await callHooks(makeContext(), [asyncHook, syncHook]);
     expect(order).toEqual(['async', 'sync']);
   });

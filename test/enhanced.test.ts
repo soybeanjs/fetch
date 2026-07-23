@@ -7,23 +7,20 @@ import type { FetchResponse, ResolvedFetchRequestConfig } from '../src/types';
 //  Helpers
 // ============================================================
 
-function createMockFetchCore(
-  responseData: any = { ok: true },
-  status = 200
-): ReturnType<typeof vi.fn> {
-  return vi.fn(async (config: ResolvedFetchRequestConfig): Promise<FetchResponse> => ({
-    data: typeof responseData === 'function' ? responseData() : responseData,
-    status,
-    statusText: status === 200 ? 'OK' : '',
-    headers: new Headers(),
-    config,
-    request: undefined
-  }));
+function createMockFetchCore(responseData: any = { ok: true }, status = 200) {
+  return vi.fn(
+    async (config: ResolvedFetchRequestConfig): Promise<FetchResponse> => ({
+      data: typeof responseData === 'function' ? responseData() : responseData,
+      status,
+      statusText: status === 200 ? 'OK' : '',
+      headers: new Headers(),
+      config,
+      request: undefined
+    })
+  );
 }
 
-function createConfig(
-  overrides: Partial<ResolvedFetchRequestConfig> = {}
-): ResolvedFetchRequestConfig {
+function createConfig(overrides: Partial<ResolvedFetchRequestConfig> = {}): ResolvedFetchRequestConfig {
   return {
     url: '/test',
     method: 'GET',
@@ -80,6 +77,7 @@ describe('createEnhancedFetch — cache', () => {
     const r2 = await enhanced(config);
 
     expect(fetchCore).toHaveBeenCalledTimes(1);
+    expect(r1.data).toEqual({ value: 1 });
     expect(r2.data).toEqual({ value: 1 });
   });
 
@@ -178,7 +176,10 @@ describe('createEnhancedFetch — dedupe', () => {
   it('deduplicates concurrent requests with same key', async () => {
     let resolveFetch: (val: any) => void;
     const fetchCore = vi.fn(
-      () => new Promise<FetchResponse>(resolve => { resolveFetch = resolve; })
+      () =>
+        new Promise<FetchResponse>(resolve => {
+          resolveFetch = resolve;
+        })
     );
     const state = createEnhancedState();
     const enhanced = createEnhancedFetch(fetchCore, state);
@@ -191,10 +192,17 @@ describe('createEnhancedFetch — dedupe', () => {
 
     const p1 = enhanced(config);
     // Flush microtasks so fetchCore is actually called and resolveFetch is assigned
-    await new Promise(r => queueMicrotask(r));
+    await new Promise<void>(r => queueMicrotask(r));
     const p2 = enhanced(config);
 
-    resolveFetch!({ data: { ok: true }, status: 200, statusText: 'OK', headers: new Headers(), config, request: undefined });
+    resolveFetch!({
+      data: { ok: true },
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+      config,
+      request: undefined
+    });
     const [r1, r2] = await Promise.all([p1, p2]);
 
     expect(fetchCore).toHaveBeenCalledTimes(1);
@@ -232,16 +240,22 @@ describe('createEnhancedFetch — dedupe', () => {
 describe('createEnhancedFetch — concurrency', () => {
   it('limits concurrent requests to maxConcurrent', async () => {
     let resolveFirst: () => void;
-    const fetchCore = vi.fn(
-      (config: ResolvedFetchRequestConfig) => {
-        if (fetchCore.mock.calls.length === 1) {
-          return new Promise<FetchResponse>(resolve => {
-            resolveFirst = () => resolve({ data: 1, status: 200, statusText: 'OK', headers: new Headers(), config, request: undefined });
-          });
-        }
-        return Promise.resolve({ data: 2, status: 200, statusText: 'OK', headers: new Headers(), config, request: undefined });
+    const fetchCore = vi.fn((config: ResolvedFetchRequestConfig) => {
+      if (fetchCore.mock.calls.length === 1) {
+        return new Promise<FetchResponse>(resolve => {
+          resolveFirst = () =>
+            resolve({ data: 1, status: 200, statusText: 'OK', headers: new Headers(), config, request: undefined });
+        });
       }
-    );
+      return Promise.resolve({
+        data: 2,
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(),
+        config,
+        request: undefined
+      });
+    });
 
     const state = createEnhancedState();
     const enhanced = createEnhancedFetch(fetchCore, state);
@@ -251,9 +265,9 @@ describe('createEnhancedFetch — concurrency', () => {
     });
 
     const p1 = enhanced(config);
-    await new Promise(r => queueMicrotask(r));
+    await new Promise<void>(r => queueMicrotask(r));
     const p2 = enhanced(config);
-    await new Promise(r => queueMicrotask(r));
+    await new Promise<void>(r => queueMicrotask(r));
 
     expect(state.concurrency.active).toBe(1);
     expect(state.concurrency.queue.length).toBe(1);
@@ -271,11 +285,7 @@ describe('createEnhancedFetch — concurrency', () => {
     const state = createEnhancedState();
     const enhanced = createEnhancedFetch(fetchCore, state);
 
-    await Promise.all([
-      enhanced(createConfig()),
-      enhanced(createConfig()),
-      enhanced(createConfig())
-    ]);
+    await Promise.all([enhanced(createConfig()), enhanced(createConfig()), enhanced(createConfig())]);
 
     expect(fetchCore).toHaveBeenCalledTimes(3);
   });
@@ -299,16 +309,22 @@ describe('createEnhancedFetch — loading', () => {
 
   it('fires onGlobalLoadingChange on 0→1 and 1→0 transitions', async () => {
     let resolveFirst: () => void;
-    const fetchCore = vi.fn(
-      (config: ResolvedFetchRequestConfig) => {
-        if (fetchCore.mock.calls.length === 1) {
-          return new Promise<FetchResponse>(resolve => {
-            resolveFirst = () => resolve({ data: 1, status: 200, statusText: 'OK', headers: new Headers(), config, request: undefined });
-          });
-        }
-        return Promise.resolve({ data: 2, status: 200, statusText: 'OK', headers: new Headers(), config, request: undefined });
+    const fetchCore = vi.fn((config: ResolvedFetchRequestConfig) => {
+      if (fetchCore.mock.calls.length === 1) {
+        return new Promise<FetchResponse>(resolve => {
+          resolveFirst = () =>
+            resolve({ data: 1, status: 200, statusText: 'OK', headers: new Headers(), config, request: undefined });
+        });
       }
-    );
+      return Promise.resolve({
+        data: 2,
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(),
+        config,
+        request: undefined
+      });
+    });
 
     const state = createEnhancedState();
     const enhanced = createEnhancedFetch(fetchCore, state);
@@ -320,7 +336,7 @@ describe('createEnhancedFetch — loading', () => {
 
     const p1 = enhanced(config);
     // Flush microtasks so fetchCore is actually called and resolveFirst is assigned
-    await new Promise(r => queueMicrotask(r));
+    await new Promise<void>(r => queueMicrotask(r));
     const p2 = enhanced(config);
 
     // While first is in-flight, global loading should have fired true once
@@ -503,7 +519,14 @@ describe('createEnhancedFetch — auth', () => {
     const fetchCore = vi.fn(async (config: ResolvedFetchRequestConfig) => {
       const callCount = fetchCore.mock.calls.length;
       if (callCount === 1) {
-        return { data: { error: 'unauthorized' }, status: 401, statusText: 'Unauthorized', headers: new Headers(), config, request: undefined };
+        return {
+          data: { error: 'unauthorized' },
+          status: 401,
+          statusText: 'Unauthorized',
+          headers: new Headers(),
+          config,
+          request: undefined
+        };
       }
       return { data: { ok: true }, status: 200, statusText: 'OK', headers: new Headers(), config, request: undefined };
     });
@@ -528,7 +551,14 @@ describe('createEnhancedFetch — auth', () => {
     const fetchCore = vi.fn(async (config: ResolvedFetchRequestConfig) => {
       const callCount = fetchCore.mock.calls.length;
       if (callCount === 1) {
-        return { data: { error: 'forbidden' }, status: 403, statusText: 'Forbidden', headers: new Headers(), config, request: undefined };
+        return {
+          data: { error: 'forbidden' },
+          status: 403,
+          statusText: 'Forbidden',
+          headers: new Headers(),
+          config,
+          request: undefined
+        };
       }
       return { data: { ok: true }, status: 200, statusText: 'OK', headers: new Headers(), config, request: undefined };
     });
@@ -554,7 +584,14 @@ describe('createEnhancedFetch — auth', () => {
     const fetchCore = vi.fn(async (config: ResolvedFetchRequestConfig) => {
       const callCount = fetchCore.mock.calls.length;
       if (callCount <= 2) {
-        return { data: { error: 'unauthorized' }, status: 401, statusText: '', headers: new Headers(), config, request: undefined };
+        return {
+          data: { error: 'unauthorized' },
+          status: 401,
+          statusText: '',
+          headers: new Headers(),
+          config,
+          request: undefined
+        };
       }
       return { data: { ok: true }, status: 200, statusText: 'OK', headers: new Headers(), config, request: undefined };
     });
@@ -567,7 +604,10 @@ describe('createEnhancedFetch — auth', () => {
       data: { a: 1 },
       auth: {
         getToken: async () => 'token',
-        refreshToken: async () => { refreshCallCount++; return 'new-token'; }
+        refreshToken: async () => {
+          refreshCallCount++;
+          return 'new-token';
+        }
       }
     });
 

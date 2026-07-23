@@ -229,7 +229,7 @@ describe('parseContentDisposition', () => {
   });
 
   it('prefers filename* over filename', () => {
-    const header = "attachment; filename=\"fallback.txt\"; filename*=UTF-8''real.txt";
+    const header = 'attachment; filename="fallback.txt"; filename*=UTF-8\'\'real.txt';
     expect(parseContentDisposition(header)).toBe('real.txt');
   });
 

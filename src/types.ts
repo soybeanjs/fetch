@@ -1,5 +1,5 @@
-import type { FetchError } from './error';
 import type { EnhancedState } from './enhanced';
+import type { FetchError } from './error';
 
 // ============================================================
 //  Content Types & HTTP Methods (内容类型与 HTTP 方法)
@@ -655,16 +655,16 @@ export type CreateFetchDefaults = FetchRequestConfig;
 //  Request Options / Hooks (请求选项 / 钩子)
 // ============================================================
 
-export interface RequestOption<
-  ResponseData = any,
-  ApiData = ResponseData
-> {
+export interface RequestOption<ResponseData = any, ApiData = ResponseData> {
   /**
    * transform the response data to the api data (转换响应数据为接口数据)
    *
+   * Optional — defaults to `response => response.data` when omitted (applied by
+   * {@link createDefaultOptions}).
+   *
    * @param response Fetch response (响应)
    */
-  transform: ResponseTransform<FetchResponse<ResponseData>, ApiData>;
+  transform?: ResponseTransform<FetchResponse<ResponseData>, ApiData>;
   /**
    * The hook before request (请求前的钩子)
    *
@@ -752,9 +752,7 @@ export interface RequestInstanceCommon {
 }
 
 /** The request instance */
-export interface RequestInstance<
-  ApiData = any
-> extends RequestInstanceCommon {
+export interface RequestInstance<ApiData = any> extends RequestInstanceCommon {
   <T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     config: FetchRequestConfig<R>
   ): Promise<MappedType<R, T>>;
@@ -811,10 +809,7 @@ export type FlatResponseData<ResponseData, ApiData> =
   | FlatResponseSuccessData<ResponseData, ApiData>
   | FlatResponseFailData<ResponseData>;
 
-export interface FlatRequestInstance<
-  ResponseData = any,
-  ApiData = ResponseData
-> extends RequestInstanceCommon {
+export interface FlatRequestInstance<ResponseData = any, ApiData = ResponseData> extends RequestInstanceCommon {
   <T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     config: FetchRequestConfig<R>
   ): Promise<FlatResponseData<ResponseData, MappedType<R, T>>>;

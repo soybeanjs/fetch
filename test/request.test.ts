@@ -37,10 +37,7 @@ describe('createRequest', () => {
         body: { hello: 'world' }
       });
 
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const data = await request({ url: '/test' });
       expect(data).toEqual({ hello: 'world' });
@@ -81,10 +78,7 @@ describe('createRequest', () => {
     it('Throws FetchError on HTTP error (e.g. 500)', async () => {
       setFetchResponse({ status: 500, body: 'Internal Server Error' });
 
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       try {
         await request({ url: '/test' });
@@ -101,10 +95,7 @@ describe('createRequest', () => {
         throw new Error('Network failed');
       });
 
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       try {
         await request({ url: '/test' });
@@ -336,10 +327,7 @@ describe('createRequest', () => {
     it('.get(url, conf?) sends GET request', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const data = await request.get('/users');
       expect(data).toEqual({ ok: true });
@@ -352,10 +340,7 @@ describe('createRequest', () => {
     it('.post(url, data?, conf?) sends POST request', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const data = await request.post('/users', { name: 'John' });
       expect(data).toEqual({ ok: true });
@@ -367,10 +352,7 @@ describe('createRequest', () => {
     it('.put(url, data?, conf?) sends PUT request', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const data = await request.put('/users/1', { name: 'John' });
       expect(data).toEqual({ ok: true });
@@ -382,10 +364,7 @@ describe('createRequest', () => {
     it('.delete(url, conf?) sends DELETE request', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const data = await request.delete('/users/1');
       expect(data).toEqual({ ok: true });
@@ -397,10 +376,7 @@ describe('createRequest', () => {
     it('.patch(url, data?, conf?) sends PATCH request', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const data = await request.patch('/users/1', { name: 'John' });
       expect(data).toEqual({ ok: true });
@@ -460,10 +436,7 @@ describe('createRequest', () => {
         headers: { 'content-disposition': 'attachment; filename="test.txt"' }
       });
 
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const response = await request.raw({ url: '/download', responseType: 'blob' });
       expect(response.data).toHaveProperty('file');
@@ -477,10 +450,7 @@ describe('createRequest', () => {
   // ----------------------------------------------------------
   describe('.state', () => {
     it('request.state is the EnhancedState', () => {
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
       expect(request.state).toBeDefined();
       expect(request.state.cache).toBeInstanceOf(Map);
       expect(request.state.loading).toBeDefined();
@@ -488,18 +458,12 @@ describe('createRequest', () => {
     });
 
     it('request.state.cache is a Map', () => {
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
       expect(request.state.cache).toBeInstanceOf(Map);
     });
 
     it('request.state.loading has count and entries', () => {
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
       expect(request.state.loading).toHaveProperty('count');
       expect(typeof request.state.loading.count).toBe('number');
       expect(request.state.loading).toHaveProperty('entries');
@@ -507,18 +471,12 @@ describe('createRequest', () => {
     });
 
     it('request.state.messages is a MessageStack instance', () => {
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
       expect(request.state.messages).toBeInstanceOf(MessageStack);
     });
 
     it('Custom fields can be set on state (index signature)', () => {
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
       request.state.customField = 'custom-value';
       expect(request.state.customField).toBe('custom-value');
     });
@@ -526,10 +484,7 @@ describe('createRequest', () => {
     it('State is shared across requests from the same instance', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const stateRef = request.state;
       await request({ url: '/a' });
@@ -650,10 +605,7 @@ describe('createFlatRequest', () => {
     it('Returns { data: null, error, response? } on failure', async () => {
       setFetchResponse({ status: 500, body: 'Internal Server Error' });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const result = await request({ url: '/test' });
       expect(result.data).toBeNull();
@@ -667,10 +619,7 @@ describe('createFlatRequest', () => {
         throw new Error('Network failed');
       });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const result = await request({ url: '/test' });
       expect(result.data).toBeNull();
@@ -699,10 +648,7 @@ describe('createFlatRequest', () => {
     it('Default transform is `response => response.data`', async () => {
       setFetchResponse({ status: 200, body: { hello: 'world' } });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const result = await request({ url: '/test' });
       expect(result.data).toEqual({ hello: 'world' });
@@ -753,10 +699,7 @@ describe('createFlatRequest', () => {
     it('.get() works like createRequest but returns flat response', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const result = await request.get('/users');
       expect(result.data).toEqual({ ok: true });
@@ -767,10 +710,7 @@ describe('createFlatRequest', () => {
     it('.post() works like createRequest but returns flat response', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const result = await request.post('/users', { name: 'John' });
       expect(result.data).toEqual({ ok: true });
@@ -780,10 +720,7 @@ describe('createFlatRequest', () => {
     it('.put() works like createRequest but returns flat response', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const result = await request.put('/users/1', { name: 'John' });
       expect(result.data).toEqual({ ok: true });
@@ -793,10 +730,7 @@ describe('createFlatRequest', () => {
     it('.delete() works like createRequest but returns flat response', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const result = await request.delete('/users/1');
       expect(result.data).toEqual({ ok: true });
@@ -806,10 +740,7 @@ describe('createFlatRequest', () => {
     it('.patch() works like createRequest but returns flat response', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const result = await request.patch('/users/1', { name: 'John' });
       expect(result.data).toEqual({ ok: true });
@@ -838,18 +769,17 @@ describe('createFlatRequest', () => {
       const result = await request.raw({ url: '/test' });
       expect(result.error).toBeNull();
       expect(result.data).toBeDefined();
-      expect(result.data.status).toBe(200);
+      // Discriminated union: data is null when error is set, so narrow for TS.
+      const data = result.data!;
+      expect(data.status).toBe(200);
       // data.data is the original parsed body (not transformed)
-      expect(result.data.data).toEqual({ code: 200, data: { id: 1 }, message: 'ok' });
+      expect(data.data).toEqual({ code: 200, data: { id: 1 }, message: 'ok' });
     });
 
     it('Returns error on failure', async () => {
       setFetchResponse({ status: 500, body: 'Internal Server Error' });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
       const result = await request.raw({ url: '/test' });
       expect(result.data).toBeNull();
@@ -862,10 +792,7 @@ describe('createFlatRequest', () => {
   // ----------------------------------------------------------
   describe('.state', () => {
     it('Same as createRequest.state — EnhancedState with all fields', () => {
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: () => true }
-      );
+      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
       expect(request.state.cache).toBeInstanceOf(Map);
       expect(request.state.loading).toHaveProperty('count');
       expect(request.state.loading).toHaveProperty('entries');
@@ -888,10 +815,7 @@ describe('File download', () => {
       headers: { 'content-disposition': 'attachment; filename="report.pdf"' }
     });
 
-    const request = createRequest(
-      { baseURL: 'https://api.example.com' },
-      { isBackendSuccess: () => true }
-    );
+    const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
     const result = await request.get('/download', { responseType: 'blob' });
     expect(result).toHaveProperty('file');
@@ -907,10 +831,7 @@ describe('File download', () => {
       headers: { 'content-disposition': 'attachment; filename="data.csv"' }
     });
 
-    const request = createRequest(
-      { baseURL: 'https://api.example.com' },
-      { isBackendSuccess: () => true }
-    );
+    const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
     const result = await request.get('/download', { responseType: 'blob' });
     expect(result.filename).toBe('data.csv');
@@ -924,10 +845,7 @@ describe('File download', () => {
       headers: { 'content-disposition': 'attachment; filename="original.txt"' }
     });
 
-    const request = createRequest(
-      { baseURL: 'https://api.example.com' },
-      { isBackendSuccess: () => true }
-    );
+    const request = createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
 
     const result = await request.get('/download', {
       responseType: 'blob',

@@ -2,11 +2,26 @@ import { RETRY_STATUS_CODES } from './constant';
 import { isHttpSuccess } from './shared';
 import { mergeHeaders, serializeParams } from './utils';
 import type { FetchError } from './error';
-import type { CreateFetchDefaults, RequestOption, RetryOptions } from './types';
+import type { CreateFetchDefaults, FetchResponse, RequestOption, ResponseTransform, RetryOptions } from './types';
 
 // ============================================================
 //  Default Options (默认选项)
 // ============================================================
+
+/**
+ * {@link RequestOption} with the fields that {@link createDefaultOptions}
+ * guarantees filled in (`transform`, `backendErrorMsg`).
+ *
+ * This lets callers omit `transform` at the call site while internal code
+ * (`createRequest`, `createFlatRequest`) can rely on `opts.transform` being defined.
+ */
+export type DefaultedRequestOption<ResponseData = any, ApiData = ResponseData> = Omit<
+  RequestOption<ResponseData, ApiData>,
+  'transform' | 'backendErrorMsg'
+> & {
+  transform: ResponseTransform<FetchResponse<ResponseData>, ApiData>;
+  backendErrorMsg: string;
+};
 
 /**
  * Create request options with defaults applied.
@@ -18,7 +33,7 @@ import type { CreateFetchDefaults, RequestOption, RetryOptions } from './types';
  */
 export function createDefaultOptions<ResponseData, ApiData>(
   options: RequestOption<ResponseData, ApiData>
-): RequestOption<ResponseData, ApiData> {
+): DefaultedRequestOption<ResponseData, ApiData> {
   return {
     ...options,
     backendErrorMsg: options.backendErrorMsg ?? 'Backend request error, please check `isBackendSuccess`.',
@@ -31,6 +46,14 @@ export function createDefaultOptions<ResponseData, ApiData>(
 // ============================================================
 
 /**
+ * {@link CreateFetchDefaults} with `headers` guaranteed to be a `Headers`
+ * instance (always normalized by {@link createFetchConfig}).
+ */
+export type ResolvedCreateFetchDefaults = Omit<CreateFetchDefaults, 'headers'> & {
+  headers: Headers;
+};
+
+/**
  * Build the default fetch configuration from user-provided defaults.
  *
  * 从用户提供的默认值构建 fetch 默认配置。
@@ -40,7 +63,7 @@ export function createDefaultOptions<ResponseData, ApiData>(
  * - Sets default `paramsSerializer` to {@link serializeParams}
  * - Adds a default `Accept` header
  */
-export function createFetchConfig(config?: CreateFetchDefaults): CreateFetchDefaults {
+export function createFetchConfig(config?: CreateFetchDefaults): ResolvedCreateFetchDefaults {
   const headers = mergeHeaders(
     {
       Accept: 'application/json, text/plain, */*'

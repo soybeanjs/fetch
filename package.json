@@ -40,9 +40,9 @@
     "lint": "vp lint --fix",
     "publish-pkg": "pnpm -r publish --access public",
     "release": "soy release",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test": "vp test",
+    "test:coverage": "vp test --coverage",
+    "test:watch": "vp test --watch",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "upkg": "soy ncu"
   },

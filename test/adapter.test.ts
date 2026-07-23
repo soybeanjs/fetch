@@ -100,7 +100,7 @@ describe('createAdapterResponse', () => {
   it('defaults headers to a new Headers() instance', () => {
     const res = createAdapterResponse({ status: 200 });
     expect(res.headers).toBeInstanceOf(Headers);
-    expect(Array.from(res.headers.entries())).toHaveLength(0);
+    expect(Array.from((res.headers as Record<string, any>).entries())).toHaveLength(0);
   });
 
   it('defaults body to null', () => {
@@ -176,6 +176,7 @@ describe('createUploadProgressAdapter', () => {
 
   it('selects the XHR adapter when XMLHttpRequest is available', () => {
     // Simulate a browser-like environment by stubbing XMLHttpRequest.
+    // oxlint-disable-next-line typescript/no-extraneous-class
     vi.stubGlobal('XMLHttpRequest', class FakeXHR {});
     const adapter = createUploadProgressAdapter(vi.fn());
     expect(typeof adapter).toBe('function');

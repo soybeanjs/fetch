@@ -18,13 +18,7 @@ export interface MockResponseOptions {
  * and consumed by fetchCore).
  */
 export function createMockAdapterResponse(options: MockResponseOptions = {}): FetchAdapterResponse {
-  const {
-    status = 200,
-    statusText = 'OK',
-    headers = {},
-    body = '',
-    contentType = 'application/json'
-  } = options;
+  const { status = 200, statusText = 'OK', headers = {}, body = '', contentType = 'application/json' } = options;
 
   const responseHeaders = new Headers({ 'content-type': contentType, ...headers });
   const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
@@ -45,13 +39,7 @@ export function createMockAdapterResponse(options: MockResponseOptions = {}): Fe
  * Build a native Response object (what `fetch()` returns).
  */
 export function createMockFetchResponse(options: MockResponseOptions = {}): Response {
-  const {
-    status = 200,
-    statusText = 'OK',
-    headers = {},
-    body = '',
-    contentType = 'application/json'
-  } = options;
+  const { status = 200, statusText = 'OK', headers = {}, body = '', contentType = 'application/json' } = options;
 
   const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
   const responseHeaders = new Headers({ 'content-type': contentType, ...headers });
@@ -127,10 +115,10 @@ export function getFetchCallCount(): number {
 
 /** Wait for all pending microtasks/timers to flush. */
 export function flushMicrotasks(): Promise<void> {
-  return new Promise(resolve => queueMicrotask(resolve));
+  return new Promise<void>(resolve => queueMicrotask(resolve));
 }
 
 /** Create a promise that resolves after a delay (fake-timer friendly). */
 export function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise<void>(resolve => setTimeout(resolve, ms));
 }

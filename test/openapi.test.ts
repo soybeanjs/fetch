@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createTypedClient, createFlatTypedClient } from '../src/openapi';
 import { createRequest, createFlatRequest } from '../src/core';
+import { createTypedClient, createFlatTypedClient } from '../src/openapi';
 import { setFetchResponse, getFetchCalls } from './helpers';
 
 // ============================================================
@@ -107,9 +107,7 @@ describe('createTypedClient', () => {
     const mockRequest = createMockRequest();
     const client = createTypedClient(mockRequest, '/api') as any;
 
-    expect(() => client.get('/users/{id}', { params: { path: {} } })).toThrow(
-      /Missing required path parameter "id"/
-    );
+    expect(() => client.get('/users/{id}', { params: { path: {} } })).toThrow(/Missing required path parameter "id"/);
     // The request instance must never be called when path resolution fails.
     expect(mockRequest).not.toHaveBeenCalled();
   });

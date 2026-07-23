@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MessageStack, type MessageEntry } from '../src/message';
+import { MessageStack } from '../src/message';
+import type { MessageEntry } from '../src/message';
 
 describe('MessageStack', () => {
   let stack: MessageStack;
