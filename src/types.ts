@@ -393,9 +393,33 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omi
   url?: string;
   method?: HttpMethod | string;
   headers?: Headers | Record<string, string>;
-  params?: Record<string, any>;
-  /** Request body — auto-serialized for JSON objects (请求体 —— JSON 对象自动序列化) */
-  data?: any;
+  /**
+   * Query parameters appended to the URL (查询参数,拼接到 URL)
+   *
+   * Serialized via {@link FetchRequestConfig.paramsSerializer} (default: `serializeParams`).
+   * `null` / `undefined` values are skipped; arrays produce repeated keys.
+   *
+   * @example
+   * ```ts
+   * $fetch('/users', { query: { page: 1, size: 10 } })
+   * // GET /users?page=1&size=10
+   * ```
+   */
+  query?: Record<string, any>;
+  /**
+   * Request body — accepts native `BodyInit` types or a plain object that will be
+   * auto-serialized to JSON (sets `Content-Type: application/json` when unset).
+   *
+   * 请求体 —— 接受原生 `BodyInit` 类型,或传入普通对象将自动序列化为 JSON
+   * (未设置 `Content-Type` 时自动添加 `application/json`)。
+   *
+   * @example
+   * ```ts
+   * await $fetch('/users', { method: 'POST', body: { name: 'John' } })
+   * await $fetch('/upload', { method: 'POST', body: formData })
+   * ```
+   */
+  body?: BodyInit | Record<string, any> | null;
   responseType?: R;
   timeout?: number;
   signal?: AbortSignal;
@@ -591,7 +615,7 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omi
    *
    * 序列化前转换请求数据(如 camelCase → snake_case)。
    */
-  transformRequest?: (data: any, config: ResolvedFetchRequestConfig) => any;
+  transformRequest?: (body: any, config: ResolvedFetchRequestConfig) => any;
 
   /**
    * Transform response data after parsing (e.g., snake_case → camelCase).
@@ -765,12 +789,12 @@ export interface RequestInstance<ApiData = any> extends RequestInstanceCommon {
   ): Promise<MappedType<R, T>>;
   post<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     config?: BodyMethodConfig<R>
   ): Promise<MappedType<R, T>>;
   put<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     config?: BodyMethodConfig<R>
   ): Promise<MappedType<R, T>>;
   delete<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
@@ -779,7 +803,7 @@ export interface RequestInstance<ApiData = any> extends RequestInstanceCommon {
   ): Promise<MappedType<R, T>>;
   patch<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     config?: BodyMethodConfig<R>
   ): Promise<MappedType<R, T>>;
 }
@@ -830,12 +854,12 @@ export interface FlatRequestInstance<ResponseData = any, ApiData = ResponseData>
   ): Promise<FlatResponseData<ResponseData, MappedType<R, T>>>;
   post<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     config?: BodyMethodConfig<R>
   ): Promise<FlatResponseData<ResponseData, MappedType<R, T>>>;
   put<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     config?: BodyMethodConfig<R>
   ): Promise<FlatResponseData<ResponseData, MappedType<R, T>>>;
   delete<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
@@ -844,7 +868,7 @@ export interface FlatRequestInstance<ResponseData = any, ApiData = ResponseData>
   ): Promise<FlatResponseData<ResponseData, MappedType<R, T>>>;
   patch<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     config?: BodyMethodConfig<R>
   ): Promise<FlatResponseData<ResponseData, MappedType<R, T>>>;
 }
@@ -860,8 +884,11 @@ export type SimpleMethodConfig<R extends ResponseType = 'json'> = Omit<FetchRequ
 
 /**
  * Config for convenience methods with a request body (POST / PUT / PATCH).
+ *
+ * The `body` field is omitted because the body is provided
+ * as the positional parameter of the convenience method (e.g. `post(url, body, config)`).
  */
-export type BodyMethodConfig<R extends ResponseType = 'json'> = Omit<FetchRequestConfig<R>, 'url' | 'method' | 'data'>;
+export type BodyMethodConfig<R extends ResponseType = 'json'> = Omit<FetchRequestConfig<R>, 'url' | 'method' | 'body'>;
 
 // ============================================================
 //  $Fetch Interface ($Fetch 接口 — 对标 ofetch)

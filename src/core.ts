@@ -65,13 +65,11 @@ function getFileData(response: FetchResponse, getFileName?: (response: FetchResp
  *
  * This is the internal foundation used by both {@link createRequest} and {@link createFlatRequest}.
  */
-export function createCommonRequest<
-  ResponseData = any,
-  ApiData = ResponseData
->(config?: CreateFetchDefaults, options?: RequestOption<ResponseData, ApiData>) {
-  const opts = createDefaultOptions<ResponseData, ApiData>(
-    options || ({} as RequestOption<ResponseData, ApiData>)
-  );
+export function createCommonRequest<ResponseData = any, ApiData = ResponseData>(
+  config?: CreateFetchDefaults,
+  options?: RequestOption<ResponseData, ApiData>
+) {
+  const opts = createDefaultOptions<ResponseData, ApiData>(options || ({} as RequestOption<ResponseData, ApiData>));
 
   const fetchConfig = createFetchConfig(config);
 
@@ -121,10 +119,7 @@ export function createCommonRequest<
  * // file: { file: Blob, filename: string, contentType: string }
  * ```
  */
-export function createRequest<
-  ResponseData = any,
-  ApiData = ResponseData
->(
+export function createRequest<ResponseData = any, ApiData = ResponseData>(
   config?: CreateFetchDefaults,
   options?: RequestOption<ResponseData, ApiData>
 ): RequestInstance<ApiData> {
@@ -165,18 +160,18 @@ export function createRequest<
 
   request.post = function post<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     conf?: any
   ): Promise<MappedType<R, T>> {
-    return request({ ...conf, url, method: 'POST', data });
+    return request({ ...conf, url, method: 'POST', body });
   };
 
   request.put = function put<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     conf?: any
   ): Promise<MappedType<R, T>> {
-    return request({ ...conf, url, method: 'PUT', data });
+    return request({ ...conf, url, method: 'PUT', body });
   };
 
   request.delete = function deleteFn<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
@@ -188,10 +183,10 @@ export function createRequest<
 
   request.patch = function patch<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     conf?: any
   ): Promise<MappedType<R, T>> {
-    return request({ ...conf, url, method: 'PATCH', data });
+    return request({ ...conf, url, method: 'PATCH', body });
   };
 
   request.state = instance.enhancedState;
@@ -232,10 +227,7 @@ export function createRequest<
  * }
  * ```
  */
-export function createFlatRequest<
-  ResponseData = any,
-  ApiData = ResponseData
->(
+export function createFlatRequest<ResponseData = any, ApiData = ResponseData>(
   config?: CreateFetchDefaults,
   options?: RequestOption<ResponseData, ApiData>
 ): FlatRequestInstance<ResponseData, ApiData> {
@@ -301,18 +293,18 @@ export function createFlatRequest<
 
   flatRequest.post = function post<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     conf?: any
   ): Promise<FlatResponseData<ResponseData, MappedType<R, T>>> {
-    return flatRequest({ ...conf, url, method: 'POST', data });
+    return flatRequest({ ...conf, url, method: 'POST', body });
   };
 
   flatRequest.put = function put<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     conf?: any
   ): Promise<FlatResponseData<ResponseData, MappedType<R, T>>> {
-    return flatRequest({ ...conf, url, method: 'PUT', data });
+    return flatRequest({ ...conf, url, method: 'PUT', body });
   };
 
   flatRequest.delete = function deleteFn<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
@@ -324,10 +316,10 @@ export function createFlatRequest<
 
   flatRequest.patch = function patch<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
-    data?: any,
+    body?: any,
     conf?: any
   ): Promise<FlatResponseData<ResponseData, MappedType<R, T>>> {
-    return flatRequest({ ...conf, url, method: 'PATCH', data });
+    return flatRequest({ ...conf, url, method: 'PATCH', body });
   };
 
   flatRequest.state = instance.enhancedState;

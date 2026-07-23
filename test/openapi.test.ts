@@ -62,12 +62,12 @@ describe('createTypedClient', () => {
     const config = mockRequest.mock.calls[0][0];
     expect(config.url).toBe('/api/v1/users');
     expect(config.method).toBe('get');
-    expect(config.params).toEqual({ page: 1, pageSize: 10 });
+    expect(config.query).toEqual({ page: 1, pageSize: 10 });
     // The client returns whatever requestInstance resolves with.
     expect(result).toBe(config);
   });
 
-  it('client.post calls requestInstance with method POST and body as data', async () => {
+  it('client.post calls requestInstance with method POST and body', async () => {
     const mockRequest = createMockRequest();
     const client = createTypedClient(mockRequest, '/api') as any;
 
@@ -76,7 +76,7 @@ describe('createTypedClient', () => {
     const config = mockRequest.mock.calls[0][0];
     expect(config.method).toBe('post');
     expect(config.url).toBe('/api/users');
-    expect(config.data).toEqual({ name: 'John' });
+    expect(config.body).toEqual({ name: 'John' });
   });
 
   it('prepends the URL prefix', async () => {
@@ -117,17 +117,17 @@ describe('createTypedClient', () => {
     const client = createTypedClient(mockRequest, '/api') as any;
 
     await client.get('/search', { params: { query: { q: 'hello', limit: 5 } } });
-    expect(mockRequest.mock.calls[0][0].params).toEqual({ q: 'hello', limit: 5 });
+    expect(mockRequest.mock.calls[0][0].query).toEqual({ q: 'hello', limit: 5 });
   });
 
-  it('sets the request body from `body` as `data`', async () => {
+  it('sets the request body from `body`', async () => {
     const mockRequest = createMockRequest();
     const client = createTypedClient(mockRequest, '/api') as any;
 
     await client.put('/users/1', { body: { name: 'Jane' } });
     const config = mockRequest.mock.calls[0][0];
     expect(config.method).toBe('put');
-    expect(config.data).toEqual({ name: 'Jane' });
+    expect(config.body).toEqual({ name: 'Jane' });
   });
 
   it('sets headers from params.header', async () => {
@@ -253,7 +253,7 @@ describe('createFlatTypedClient', () => {
     const config = mockFlat.mock.calls[0][0];
     expect(config.url).toBe('/api/v1/users');
     expect(config.method).toBe('get');
-    expect(config.params).toEqual({ page: 1 });
+    expect(config.query).toEqual({ page: 1 });
 
     expect(result).toHaveProperty('data');
     expect(result).toHaveProperty('error', null);
@@ -284,7 +284,7 @@ describe('createFlatTypedClient', () => {
     const config = mockFlat.mock.calls[0][0];
     expect(config.url).toBe('/base/items');
     expect(config.method).toBe('post');
-    expect(config.data).toEqual({ x: 1 });
+    expect(config.body).toEqual({ x: 1 });
   });
 });
 

@@ -187,7 +187,7 @@ describe('createEnhancedFetch — dedupe', () => {
     const config = createConfig({
       dedupe: true,
       method: 'POST',
-      data: { a: 1 }
+      body: { a: 1 }
     });
 
     const p1 = enhanced(config);
@@ -411,7 +411,7 @@ describe('createEnhancedFetch — debounce', () => {
     const config = createConfig({
       debounce: 100,
       method: 'POST',
-      data: { a: 1 }
+      body: { a: 1 }
     });
 
     const p1 = enhanced(config);
@@ -439,7 +439,7 @@ describe('createEnhancedFetch — throttle', () => {
     const config = createConfig({
       throttle: 1000,
       method: 'POST',
-      data: { a: 1 }
+      body: { a: 1 }
     });
 
     await enhanced(config);
@@ -459,7 +459,7 @@ describe('createEnhancedFetch — throttle', () => {
     const config = createConfig({
       throttle: 1000,
       method: 'POST',
-      data: { a: 1 }
+      body: { a: 1 }
     });
 
     await enhanced(config);
@@ -601,7 +601,7 @@ describe('createEnhancedFetch — auth', () => {
     const config = createConfig({
       url: '/shared',
       method: 'POST',
-      data: { a: 1 },
+      body: { a: 1 },
       auth: {
         getToken: async () => 'token',
         refreshToken: async () => {
@@ -612,7 +612,7 @@ describe('createEnhancedFetch — auth', () => {
     });
 
     // Two concurrent requests that both get 401
-    await Promise.all([enhanced(config), enhanced({ ...config, data: { b: 2 } })]);
+    await Promise.all([enhanced(config), enhanced({ ...config, body: { b: 2 } })]);
 
     // refreshToken should only be called once despite two 401s
     expect(refreshCallCount).toBe(1);

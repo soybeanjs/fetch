@@ -145,15 +145,16 @@ export type RequestBodyOption<T> =
 /**
  * Full per-request options for an OpenAPI operation.
  *
- * Merges `params`, `body`, and allows passthrough of fetch config. The following fields
- * are intentionally omitted because they are managed by the client:
+ * Merges `params` (OpenAPI-style: `{ query, path, header }`), `body`, and allows
+ * passthrough of fetch config. The following fields are intentionally omitted
+ * because they are managed by the client:
  * - `url` / `method` — set by the client itself
- * - `params` / `data` — replaced by `params.query` and `body`
+ * - `query` / `params` / `body` / `data` — replaced by `params.query` and `body`
  * - `headers` — replaced by `params.header` to avoid dual-path ambiguity
  */
 export type OpenapiRequestOptions<T> = ParamsOption<T> &
   RequestBodyOption<T> &
-  Omit<FetchRequestConfig, 'url' | 'method' | 'params' | 'data' | 'headers'>;
+  Omit<FetchRequestConfig, 'url' | 'method' | 'body' | 'headers'>;
 
 // ============================================================
 //  Client Method Types (客户端方法类型)
@@ -280,6 +281,9 @@ function replacePathParams(path: string, params?: Record<string, unknown>): stri
 /**
  * Translate the OpenAPI-style `{ params: { query, path, header, cookie }, body, ...rest }`
  * options into a {@link FetchRequestConfig}.
+ *
+ * Now that `FetchRequestConfig` has native `body` and `query` fields, this just
+ * maps `params.query` → `query`, `params.header` → `headers`, and passes `body` through.
  */
 function buildFetchConfig(url: string, prefix: string, method: HttpMethod, options: any): FetchRequestConfig<'json'> {
   const { params, body, ...restConfig } = options || {};
@@ -289,8 +293,8 @@ function buildFetchConfig(url: string, prefix: string, method: HttpMethod, optio
   return {
     url: resolvedUrl,
     method,
-    params: params?.query,
-    data: body,
+    query: params?.query,
+    body,
     headers: params?.header,
     ...restConfig
   };

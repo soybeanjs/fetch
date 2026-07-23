@@ -1,6 +1,6 @@
+import { serializeParams } from './utils';
 import { FetchError } from './error';
 import { MessageStack } from './message';
-import { serializeParams } from './utils';
 import type {
   AuthOptions,
   CacheOptions,
@@ -76,14 +76,14 @@ export function createEnhancedState(): EnhancedState {
 // ============================================================
 
 function defaultCacheKey(config: ResolvedFetchRequestConfig): string {
-  const params = config.params ? serializeParams(config.params) : '';
-  return `${config.method.toUpperCase()}:${config.url}:${params}`;
+  const query = config.query ? serializeParams(config.query) : '';
+  return `${config.method.toUpperCase()}:${config.url}:${query}`;
 }
 
 function defaultDedupeKey(config: ResolvedFetchRequestConfig): string {
-  const params = config.params ? serializeParams(config.params) : '';
-  const data = config.data ? JSON.stringify(config.data) : '';
-  return `${config.method.toUpperCase()}:${config.url}:${params}:${data}`;
+  const query = config.query ? serializeParams(config.query) : '';
+  const body = config.body ? JSON.stringify(config.body) : '';
+  return `${config.method.toUpperCase()}:${config.url}:${query}:${body}`;
 }
 
 // ============================================================
@@ -98,7 +98,9 @@ function resolveCacheOptions(config: ResolvedFetchRequestConfig): CacheOptions |
   return opts;
 }
 
-function resolveDedupeOptions(config: ResolvedFetchRequestConfig): { key: (config: ResolvedFetchRequestConfig) => string } | null {
+function resolveDedupeOptions(
+  config: ResolvedFetchRequestConfig
+): { key: (config: ResolvedFetchRequestConfig) => string } | null {
   if (!config.dedupe) return null;
   if (config.dedupe === true) return { key: defaultDedupeKey };
   return { key: config.dedupe.key ?? defaultDedupeKey };
@@ -237,11 +239,7 @@ function debounceFetch(
   });
 }
 
-function checkThrottle(
-  state: EnhancedState,
-  key: string,
-  interval: number
-): boolean {
+function checkThrottle(state: EnhancedState, key: string, interval: number): boolean {
   const now = Date.now();
   const lastCall = state.throttle.get(key);
   if (lastCall && now - lastCall < interval) {
@@ -255,9 +253,7 @@ function checkThrottle(
 //  Auth (认证 — Token 附加与刷新)
 // ============================================================
 
-async function attachAuthHeaders(
-  config: ResolvedFetchRequestConfig
-): Promise<ResolvedFetchRequestConfig> {
+async function attachAuthHeaders(config: ResolvedFetchRequestConfig): Promise<ResolvedFetchRequestConfig> {
   if (!config.auth?.getToken) return config;
   const token = await config.auth.getToken();
   if (!token) return config;
@@ -267,11 +263,7 @@ async function attachAuthHeaders(
 }
 
 /** Check if the response should trigger a token refresh based on `auth.refreshOn`. */
-function shouldRefreshAuth(
-  auth: AuthOptions | undefined,
-  status: number,
-  response: FetchResponse
-): boolean {
+function shouldRefreshAuth(auth: AuthOptions | undefined, status: number, response: FetchResponse): boolean {
   if (!auth?.refreshToken) return false;
   const condition = auth.refreshOn ?? 401;
   if (typeof condition === 'number') {
@@ -280,10 +272,7 @@ function shouldRefreshAuth(
   return condition(status, response);
 }
 
-async function handleAuthRefresh(
-  state: EnhancedState,
-  config: ResolvedFetchRequestConfig
-): Promise<string | null> {
+async function handleAuthRefresh(state: EnhancedState, config: ResolvedFetchRequestConfig): Promise<string | null> {
   if (!config.auth?.refreshToken) {
     config.auth?.onUnauthorized?.();
     return null;
@@ -308,10 +297,7 @@ async function handleAuthRefresh(
 //  Schema Validation (响应验证)
 // ============================================================
 
-function validateSchema(
-  data: any,
-  schema: NonNullable<ResolvedFetchRequestConfig['schema']>
-): any {
+function validateSchema(data: any, schema: NonNullable<ResolvedFetchRequestConfig['schema']>): any {
   if (typeof schema === 'function') {
     return schema(data);
   }
@@ -358,10 +344,10 @@ export function createEnhancedFetch(
     const actionKey = defaultDedupeKey(config);
     if (config.throttle && config.throttle > 0) {
       if (!checkThrottle(state, actionKey, config.throttle)) {
-        throw new FetchError(
-          `[${config.method}] "${config.url}": Request throttled`,
-          { code: 'ERR_THROTTLED', config }
-        );
+        throw new FetchError(`[${config.method}] "${config.url}": Request throttled`, {
+          code: 'ERR_THROTTLED',
+          config
+        });
       }
     }
 

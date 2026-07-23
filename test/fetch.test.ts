@@ -25,7 +25,7 @@ describe('$fetch basic usage', () => {
 
   it('POST sends JSON body', async () => {
     setFetchResponse({ body: { created: true } });
-    await $fetch('/api/users', { method: 'POST', data: { name: 'John' } });
+    await $fetch('/api/users', { method: 'POST', body: { name: 'John' } });
     const call = getFetchCalls()[0];
     expect(call.init?.method).toBe('POST');
     expect(call.init?.body).toBe(JSON.stringify({ name: 'John' }));
@@ -33,7 +33,7 @@ describe('$fetch basic usage', () => {
 
   it('appends params to URL', async () => {
     setFetchResponse({ body: [] });
-    await $fetch('/api/users', { params: { page: 1, limit: 10 } });
+    await $fetch('/api/users', { query: { page: 1, limit: 10 } });
     const url = getFetchCalls()[0].url;
     expect(url).toContain('page=1');
     expect(url).toContain('limit=10');
@@ -484,7 +484,7 @@ describe('fetchCore: hooks', () => {
 describe('fetchCore: body serialization', () => {
   it('JSON object → JSON.stringify with content-type', async () => {
     setFetchResponse({ body: {} });
-    await $fetch('/test', { method: 'POST', data: { name: 'John' } });
+    await $fetch('/test', { method: 'POST', body: { name: 'John' } });
     const init = getFetchCalls()[0].init!;
     expect(init.body).toBe(JSON.stringify({ name: 'John' }));
     const headers = new Headers(init.headers as HeadersInit);
@@ -493,7 +493,7 @@ describe('fetchCore: body serialization', () => {
 
   it('string body passed as-is', async () => {
     setFetchResponse({ body: {} });
-    await $fetch('/test', { method: 'POST', data: 'raw text' });
+    await $fetch('/test', { method: 'POST', body: 'raw text' });
     expect(getFetchCalls()[0].init!.body).toBe('raw text');
   });
 
@@ -501,21 +501,21 @@ describe('fetchCore: body serialization', () => {
     setFetchResponse({ body: {} });
     const formData = new FormData();
     formData.append('file', new Blob(['content']), 'test.txt');
-    await $fetch('/test', { method: 'POST', data: formData });
+    await $fetch('/test', { method: 'POST', body: formData });
     expect(getFetchCalls()[0].init!.body).toBe(formData);
   });
 
   it('Blob passed as-is', async () => {
     setFetchResponse({ body: {} });
     const blob = new Blob(['data']);
-    await $fetch('/test', { method: 'POST', data: blob });
+    await $fetch('/test', { method: 'POST', body: blob });
     expect(getFetchCalls()[0].init!.body).toBe(blob);
   });
 
   it('ArrayBuffer passed as-is', async () => {
     setFetchResponse({ body: {} });
     const buf = new ArrayBuffer(4);
-    await $fetch('/test', { method: 'POST', data: buf });
+    await $fetch('/test', { method: 'POST', body: buf });
     expect(getFetchCalls()[0].init!.body).toBe(buf);
   });
 
@@ -523,19 +523,19 @@ describe('fetchCore: body serialization', () => {
     setFetchResponse({ body: {} });
     const params = new URLSearchParams();
     params.append('key', 'val');
-    await $fetch('/test', { method: 'POST', data: params });
+    await $fetch('/test', { method: 'POST', body: params });
     expect(getFetchCalls()[0].init!.body).toBe(params);
   });
 
   it('null/undefined body → undefined', async () => {
     setFetchResponse({ body: {} });
-    await $fetch('/test', { method: 'POST', data: null });
+    await $fetch('/test', { method: 'POST', body: null });
     expect(getFetchCalls()[0].init!.body).toBeUndefined();
   });
 
   it('GET request → no body', async () => {
     setFetchResponse({ body: {} });
-    await $fetch('/test', { method: 'GET', data: { irrelevant: true } });
+    await $fetch('/test', { method: 'GET', body: { irrelevant: true } });
     expect(getFetchCalls()[0].init!.body).toBeUndefined();
   });
 });
@@ -577,7 +577,7 @@ describe('fetchCore: transformRequest / transformResponse / parseResponse', () =
   it('transformRequest transforms data before serialization', async () => {
     setFetchResponse({ body: {} });
     const transformRequest = (data: any) => ({ ...data, transformed: true });
-    await $fetch('/test', { method: 'POST', data: { name: 'John' }, transformRequest } as any);
+    await $fetch('/test', { method: 'POST', body: { name: 'John' }, transformRequest } as any);
     const init = getFetchCalls()[0].init!;
     expect(JSON.parse(init.body as string)).toEqual({ name: 'John', transformed: true });
   });
@@ -713,7 +713,7 @@ describe('fetchCore: custom adapter', () => {
       responseType: 'json',
       validateStatus: isHttpSuccess,
       paramsSerializer: serializeParams,
-      data: { hello: 'world' },
+      body: { hello: 'world' },
       adapter
     } as any);
 
@@ -738,7 +738,7 @@ describe('fetchCore: custom adapter', () => {
       responseType: 'json',
       validateStatus: isHttpSuccess,
       paramsSerializer: serializeParams,
-      data: 'hello',
+      body: 'hello',
       adapter,
       onUploadProgress
     } as any);
@@ -928,5 +928,38 @@ describe('processResponse', () => {
     const result = await processResponse(response, opts, makeInstance(), true);
     expect(result).toBe(response);
     expect(isBackendSuccess).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+//  body/query API
+// ============================================================
+
+describe('body/query API', () => {
+  it('`body` sends the request body (JSON-serialized with content-type)', async () => {
+    setFetchResponse({ body: {} });
+    await $fetch('/test', { method: 'POST', body: { name: 'John' } });
+    const init = getFetchCalls()[0].init!;
+    expect(JSON.parse(init.body as string)).toEqual({ name: 'John' });
+    expect(init.headers instanceof Headers ? init.headers.get('content-type') : undefined).toBe('application/json');
+  });
+
+  it('`query` appends query parameters to the URL', async () => {
+    setFetchResponse({ body: {} });
+    await $fetch('/test', { query: { page: 1, size: 10 } });
+    expect(getFetchCalls()[0].url).toContain('page=1');
+    expect(getFetchCalls()[0].url).toContain('size=10');
+  });
+
+  it('mergeConfig merges body from defaults and per-request config', () => {
+    const defaults = resolveDefaults({ body: { default: true } });
+    const merged = mergeConfig(defaults, { body: { override: true } });
+    expect(merged.body).toEqual({ override: true });
+  });
+
+  it('mergeConfig merges query from defaults and per-request config', () => {
+    const defaults = resolveDefaults({ query: { default: 1 } });
+    const merged = mergeConfig(defaults, { query: { override: 2 } });
+    expect(merged.query).toEqual({ override: 2 });
   });
 });

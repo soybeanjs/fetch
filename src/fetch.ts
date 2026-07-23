@@ -11,8 +11,8 @@ import {
   toHeaders
 } from './utils';
 import { createUploadProgressAdapter, defaultAdapter } from './adapter';
-import { BackendError, FetchError } from './error';
 import { createEnhancedFetch, createEnhancedState, clearCache, deleteCache } from './enhanced';
+import { BackendError, FetchError } from './error';
 import { createRetryOptions } from './options';
 import type {
   $Fetch,
@@ -45,6 +45,8 @@ export function mergeConfig(
     ...defaults,
     ...config,
     headers,
+    body: config.body ?? defaults.body,
+    query: config.query ?? defaults.query,
     url: config.url ?? defaults.url ?? '',
     method: (config.method ?? defaults.method ?? 'GET').toString().toUpperCase(),
     responseType: config.responseType ?? defaults.responseType ?? 'json',
@@ -79,13 +81,13 @@ export function mergeConfig(
   };
 }
 
-/** Build the final URL from baseURL, url, and params. */
+/** Build the final URL from baseURL, url, and query. */
 function buildURL(config: ResolvedFetchRequestConfig): string {
   let url = resolveURL(config.url, config.baseURL);
 
-  if (config.params) {
+  if (config.query) {
     const serializer = config.paramsSerializer ?? serializeParams;
-    const queryString = serializer(config.params);
+    const queryString = serializer(config.query);
     if (queryString) {
       url += (url.includes('?') ? '&' : '?') + queryString;
     }
@@ -379,8 +381,8 @@ export function resolveDefaults(defaults: CreateFetchDefaults): ResolvedFetchReq
     url: defaults.url ?? '',
     method: (defaults.method ?? 'GET').toString().toUpperCase(),
     headers: toHeaders(defaults.headers),
-    params: defaults.params,
-    data: defaults.data,
+    body: defaults.body,
+    query: defaults.query,
     responseType: defaults.responseType ?? 'json',
     timeout: defaults.timeout,
     signal: defaults.signal,
@@ -453,7 +455,8 @@ export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<Fet
   const headers = new Headers(config.headers);
 
   // 4. Transform request data (if configured)
-  const requestData = config.transformRequest ? config.transformRequest(config.data, config) : config.data;
+  //    `config.body` is the primary field (normalized from `body ?? data` in mergeConfig).
+  const requestData = config.transformRequest ? config.transformRequest(config.body, config) : config.body;
 
   // 5. Serialize body
   const { body, duplex } = serializeBody(requestData, config.method, headers);
@@ -635,7 +638,7 @@ export async function fetchCore(config: ResolvedFetchRequestConfig): Promise<Fet
  * // With options
  * const user = await $fetch<User>('/api/users', {
  *   method: 'POST',
- *   data: { name: 'John' }
+ *   body: { name: 'John' }
  * });
  *
  * // Create a scoped instance
@@ -701,7 +704,7 @@ export function createFetch(defaults: FetchRequestConfig = {}): $Fetch {
  * // POST request
  * const created = await $fetch<User>('/api/users', {
  *   method: 'POST',
- *   data: { name: 'John' }
+ *   body: { name: 'John' }
  * });
  *
  * // With retry and timeout

@@ -101,6 +101,7 @@ The library deliberately separates **transport** from **business logic**. Never 
 ## 4. Type System Essentials
 
 - **`FetchRequestConfig<R extends ResponseType = 'json'>`** — the AxiosRequestConfig equivalent. `R` drives `MappedType<R, T>` so `responseType: 'blob'` returns `FileResponseData<Blob>`.
+  - **Primary body/query API**: `body?: BodyInit | Record<string, any>` (auto-serialized to JSON for plain objects) and `query?: Record<string, any>` (appended to URL via `paramsSerializer`).
 - **`ResolvedFetchRequestConfig`** — every field is present (defaults applied). `fetchCore`, `mergeConfig`, and `processResponse` only ever receive this.
 - **`FetchAdapterResponse`** — the subset of native `Response` the library consumes. Custom adapters only need to implement this; they do **not** need real `Response` objects.
 - **`FetchContext`** — passed to transport-layer hooks. Mutating `context.options` mutates the request; mutating `context.response.data` transforms the response body.
@@ -134,8 +135,8 @@ The library deliberately separates **transport** from **business logic**. Never 
 ### `fetchCore` pipeline (transport)
 
 1. Transport `onRequest` hook(s) — context-mode, supports arrays
-2. `buildURL` — `resolveURL(url, baseURL)` + `paramsSerializer(params)`
-3. Clone headers; `transformRequest(data, config)` if set
+2. `buildURL` — `resolveURL(url, baseURL)` + `paramsSerializer(query)`
+3. Clone headers; `transformRequest(body, config)` if set
 4. `serializeBody` — pass-through for native body types; JSON.stringify for JSON; `duplex: 'half'` for streams
 5. `createTimeoutSignal(timeout, userSignal)` — aborts with `ERR_TIMEOUT` flag
 6. Adapter selection: `config.adapter ?? defaultAdapter`; auto-switch to `createUploadProgressAdapter` when `onUploadProgress` is set and no custom adapter
@@ -205,7 +206,7 @@ Each feature is opt-in via `FetchRequestConfig`:
 `createTypedClient<Paths, Prefix, Field>(requestInstance, prefix?)` wraps a `RequestInstance` and exposes typed HTTP verbs inferred from a generated `paths` type. `createFlatTypedClient` does the same for `FlatRequestInstance` (never-throws semantics).
 
 - Path params (`{id}`) are replaced from `params.path` — missing required params throw.
-- Query params come from `params.query`; headers from `params.header`; body from `body` (mapped to `data`).
+- Query params come from `params.query` (mapped to `query`); headers from `params.header`; body from `body` (passed through directly — no `data` translation needed anymore).
 - `Field` extracts a single field from the success response (e.g. `'data'` to unwrap an envelope).
 
 ---
@@ -259,7 +260,7 @@ Each feature is opt-in via `FetchRequestConfig`:
 - **User aborts are not retried.** Only timeouts (which abort internally) and network errors / retryable status codes are retried.
 - **`onBackendFail` retry is single-shot.** The recovered response is re-validated by `isBackendSuccess`, but `onBackendFail` will not run again — prevents infinite loops.
 - **Auth refresh is single-flight.** Concurrent 401s share one `refreshToken()` call.
-- **Cache key** defaults to `METHOD:url:params`. **Dedupe key** also includes `JSON.stringify(data)`. POST requests are deduped by body.
+- **Cache key** defaults to `METHOD:url:query`. **Dedupe key** also includes `JSON.stringify(body)`. POST requests are deduped by body.
 - **`transform` has a default** (`response => response.data`) applied by `createDefaultOptions`; it can be omitted when creating a request instance.
 - **`mergeHeaders`** — later sources override earlier ones; `undefined` values in records are skipped.
 
