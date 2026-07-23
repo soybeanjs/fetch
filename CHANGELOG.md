@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.4](https://github.com/soybeanjs/fetch/compare/v0.0.3...v0.0.4) (2026-07-23)
+
+### &nbsp;&nbsp;&nbsp;🐞 Bug Fixes
+
+- **response**: handle undefined isBackendSuccess in processResponse &nbsp;-&nbsp; by @soybeanjs [<samp>(dc9e5)</samp>](https://github.com/soybeanjs/fetch/commit/dc9e55f)
+
+### &nbsp;&nbsp;&nbsp;❤️ Contributors
+
+[![soybeanjs](https://github.com/soybeanjs.png?size=48)](https://github.com/soybeanjs)&nbsp;&nbsp;
+
 ## [v0.0.3](https://github.com/soybeanjs/fetch/compare/v0.0.2...v0.0.3) (2026-07-23)
 
 ### &nbsp;&nbsp;&nbsp;🛠 Optimizations
