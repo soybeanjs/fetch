@@ -1,5 +1,6 @@
 import type { EnhancedState } from './enhanced';
 import type { FetchError } from './error';
+import type { StandardSchemaV1 } from './standard-schema';
 
 // ============================================================
 //  Content Types & HTTP Methods (内容类型与 HTTP 方法)
@@ -363,18 +364,16 @@ export interface AuthOptions {
 // ============================================================
 
 /**
- * A Zod-like schema interface (兼容 Zod 风格的 Schema)。
- */
-interface ZodLikeSchema<T = any> {
-  parse(data: unknown): T;
-}
-
-/**
- * Response schema for runtime validation — accepts Zod schemas or plain validator functions.
+ * Response schema for runtime validation — accepts any [Standard Schema](https://github.com/standard-schema/standard-schema)
+ * (Zod v4+, Valibot, ArkType, ...) or a plain validator function.
  *
- * 响应 Schema 验证类型 — 兼容 Zod Schema 或普通验证函数。
+ * 响应 Schema 验证类型 — 兼容 [Standard Schema](https://github.com/standard-schema/standard-schema)
+ * 规范(Zod v4+ / Valibot / ArkType 等)或普通验证函数。
+ *
+ * Standard Schema 通过 `~standard.validate()` 进行校验,校验失败时会抛出
+ * 带有 `code: ERR_SCHEMA` 的 {@link FetchError}。
  */
-export type DataSchema<T = any> = ZodLikeSchema<T> | ((data: unknown) => T);
+export type DataSchema<T = any> = StandardSchemaV1<unknown, T> | ((data: unknown) => T);
 
 // ============================================================
 //  Request Config (请求配置)
@@ -604,9 +603,17 @@ export interface FetchRequestConfig<R extends ResponseType = 'json'> extends Omi
   auth?: AuthOptions;
 
   /**
-   * Response schema for runtime validation. Compatible with Zod schemas (`.parse()`) and plain validator functions.
+   * Response schema for runtime validation. Accepts any [Standard Schema](https://github.com/standard-schema/standard-schema)
+   * (Zod v4+, Valibot, ArkType, ...) or a plain validator function.
    *
-   * 响应 Schema 运行时验证。兼容 Zod Schema(`.parse()`)和普通验证函数。
+   * On validation failure a {@link FetchError} with `code: ERR_SCHEMA` is thrown.
+   * Skipped when the parsed data is `undefined` / `null`.
+   *
+   * 响应 Schema 运行时验证。兼容 [Standard Schema](https://github.com/standard-schema/standard-schema)
+   * 规范(Zod v4+ / Valibot / ArkType 等)或普通验证函数。
+   *
+   * 校验失败时抛出 `code: ERR_SCHEMA` 的 {@link FetchError}。
+   * 当解析数据为 `undefined` / `null` 时跳过校验。
    */
   schema?: DataSchema;
 

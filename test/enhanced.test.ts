@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ERR_SCHEMA } from '../src/constant';
 import { clearCache, createEnhancedFetch, createEnhancedState, deleteCache } from '../src/enhanced';
+import { FetchError } from '../src/error';
 import { MessageStack } from '../src/message';
+import type { StandardSchemaV1 } from '../src/standard-schema';
 import type { FetchResponse, ResolvedFetchRequestConfig } from '../src/types';
 
 // ============================================================
@@ -646,7 +649,20 @@ describe('createEnhancedFetch — auth', () => {
 });
 
 describe('createEnhancedFetch — schema validation', () => {
-  it('validates with function schema', async () => {
+  /** Build a minimal Standard Schema from a validate function. */
+  function makeStandardSchema<T>(
+    validate: (value: unknown) => StandardSchemaV1.Result<T> | Promise<StandardSchemaV1.Result<T>>
+  ): StandardSchemaV1<unknown, T> {
+    return {
+      '~standard': {
+        version: 1,
+        vendor: 'test',
+        validate
+      }
+    } as StandardSchemaV1<unknown, T>;
+  }
+
+  it('validates with a plain function schema', async () => {
     const fetchCore = createMockFetchCore({ name: 'John', age: 30 });
     const state = createEnhancedState();
     const enhanced = createEnhancedFetch(fetchCore, state);
@@ -659,17 +675,109 @@ describe('createEnhancedFetch — schema validation', () => {
     expect(response.data).toEqual({ name: 'John', age: 30, validated: true });
   });
 
-  it('validates with .parse() schema (Zod-like)', async () => {
+  it('validates with a Standard Schema (success — returns result.value)', async () => {
     const fetchCore = createMockFetchCore({ value: 42 });
     const state = createEnhancedState();
     const enhanced = createEnhancedFetch(fetchCore, state);
 
-    const schema = { parse: (data: any) => ({ parsed: true, original: data }) };
+    const schema = makeStandardSchema<{ value: number; doubled: number }>(data => ({
+      value: { value: (data as any).value, doubled: (data as any).value * 2 }
+    }));
+    const config = createConfig({ schema });
+
+    const response = await enhanced(config);
+
+    expect(response.data).toEqual({ value: 42, doubled: 84 });
+  });
+
+  it('supports async Standard Schema validate()', async () => {
+    const fetchCore = createMockFetchCore({ value: 42 });
+    const state = createEnhancedState();
+    const enhanced = createEnhancedFetch(fetchCore, state);
+
+    const schema = makeStandardSchema(data => Promise.resolve({ value: { parsed: true, original: data } }));
     const config = createConfig({ schema });
 
     const response = await enhanced(config);
 
     expect(response.data).toEqual({ parsed: true, original: { value: 42 } });
+  });
+
+  it('throws FetchError with ERR_SCHEMA on validation failure', async () => {
+    const fetchCore = createMockFetchCore({ value: 42 });
+    const state = createEnhancedState();
+    const enhanced = createEnhancedFetch(fetchCore, state);
+
+    const schema = makeStandardSchema(() => ({ issues: [{ message: 'expected a string' }] }));
+    const config = createConfig({ schema });
+
+    await expect(enhanced(config)).rejects.toMatchObject({
+      name: 'FetchError',
+      code: ERR_SCHEMA,
+      message: 'Schema validation failed: expected a string'
+    });
+  });
+
+  it('throws FetchError instance on validation failure', async () => {
+    const fetchCore = createMockFetchCore({ value: 42 });
+    const state = createEnhancedState();
+    const enhanced = createEnhancedFetch(fetchCore, state);
+
+    const schema = makeStandardSchema(() => ({ issues: [{ message: 'invalid' }] }));
+    const config = createConfig({ schema });
+
+    await expect(enhanced(config)).rejects.toBeInstanceOf(FetchError);
+  });
+
+  it('joins multiple issues with "; "', async () => {
+    const fetchCore = createMockFetchCore({ value: 42 });
+    const state = createEnhancedState();
+    const enhanced = createEnhancedFetch(fetchCore, state);
+
+    const schema = makeStandardSchema(() => ({
+      issues: [
+        { message: 'must be a string', path: ['name'] },
+        { message: 'must be positive', path: ['age'] }
+      ]
+    }));
+    const config = createConfig({ schema });
+
+    await expect(enhanced(config)).rejects.toMatchObject({
+      code: ERR_SCHEMA,
+      message: 'Schema validation failed: name: must be a string; age: must be positive'
+    });
+  });
+
+  it('formats array-index path segments with brackets', async () => {
+    const fetchCore = createMockFetchCore([{ id: 1 }]);
+    const state = createEnhancedState();
+    const enhanced = createEnhancedFetch(fetchCore, state);
+
+    const schema = makeStandardSchema(() => ({
+      issues: [{ message: 'required', path: [0, 'id'] }]
+    }));
+    const config = createConfig({ schema });
+
+    await expect(enhanced(config)).rejects.toMatchObject({
+      code: ERR_SCHEMA,
+      message: 'Schema validation failed: [0].id: required'
+    });
+  });
+
+  it('supports { key } path segment objects', async () => {
+    const fetchCore = createMockFetchCore({ value: 42 });
+    const state = createEnhancedState();
+    const enhanced = createEnhancedFetch(fetchCore, state);
+
+    const schema = makeStandardSchema(() => ({
+      issues: [{ message: 'bad', path: [{ key: 'value' }] }]
+    }));
+    const config = createConfig({ schema });
+
+    await expect(enhanced(config)).rejects.toMatchObject({
+      code: ERR_SCHEMA,
+      message: 'Schema validation failed: value: bad'
+    });
   });
 
   it('skips schema when data is undefined', async () => {
@@ -690,6 +798,20 @@ describe('createEnhancedFetch — schema validation', () => {
     await enhanced(config);
 
     expect(schema).not.toHaveBeenCalled();
+  });
+
+  it('skips schema when data is null', async () => {
+    const fetchCore = createMockFetchCore(null);
+    const state = createEnhancedState();
+    const enhanced = createEnhancedFetch(fetchCore, state);
+
+    const schema = makeStandardSchema(vi.fn(() => ({ value: 'should-not-run' })));
+    const config = createConfig({ schema });
+
+    const response = await enhanced(config);
+
+    expect(response.data).toBeNull();
+    expect(schema['~standard'].validate).not.toHaveBeenCalled();
   });
 });
 

@@ -1,3 +1,4 @@
+import { ERR_SCHEMA } from './constant';
 import { serializeParams } from './utils';
 import { FetchError } from './error';
 import { MessageStack } from './message';
@@ -294,14 +295,59 @@ async function handleAuthRefresh(state: EnhancedState, config: ResolvedFetchRequ
 }
 
 // ============================================================
-//  Schema Validation (响应验证)
+//  Schema Validation (响应验证 — Standard Schema)
 // ============================================================
 
-function validateSchema(data: any, schema: NonNullable<ResolvedFetchRequestConfig['schema']>): any {
+/**
+ * Format a Standard Schema issue path into a readable string.
+ *
+ * 将 Standard Schema issue 的 path 格式化为可读字符串。
+ */
+function formatIssuePath(path: ReadonlyArray<PropertyKey | { key: PropertyKey }> | undefined): string {
+  if (!path || path.length === 0) return '';
+  return path
+    .map(segment => (typeof segment === 'object' && segment !== null ? segment.key : segment))
+    .map(key => (typeof key === 'string' ? `.${key}` : `[${String(key)}]`))
+    .join('')
+    .replace(/^\./, '');
+}
+
+/**
+ * Validate `data` against a {@link ResolvedFetchRequestConfig.schema}.
+ *
+ * - Plain function: called directly as a simple validator/transformer.
+ * - Standard Schema: uses the spec's `~standard.validate()` method. On
+ *   failure (truthy `issues`) throws a {@link FetchError} with
+ *   `code: ERR_SCHEMA`; on success returns `result.value`.
+ *
+ * 按 {@link ResolvedFetchRequestConfig.schema} 校验 `data`。
+ *
+ * - 普通函数:直接调用作为简单的验证器/转换器。
+ * - Standard Schema:使用规范定义的 `~standard.validate()` 方法。校验失败
+ *   (存在 `issues`)时抛出 `code: ERR_SCHEMA` 的 {@link FetchError};
+ *   成功时返回 `result.value`。
+ */
+async function validateSchema(data: any, schema: NonNullable<ResolvedFetchRequestConfig['schema']>): Promise<any> {
+  // Plain function — call directly as a simple validator/transformer
   if (typeof schema === 'function') {
     return schema(data);
   }
-  return schema.parse(data);
+
+  // Standard Schema — use the spec's validate() method
+  const result = await schema['~standard'].validate(data);
+
+  // Failure: truthy `issues` indicates validation failure
+  if (result.issues) {
+    const message = result.issues
+      .map(issue => {
+        const path = formatIssuePath(issue.path);
+        return path ? `${path}: ${issue.message}` : issue.message;
+      })
+      .join('; ');
+    throw new FetchError(`Schema validation failed: ${message}`, { code: ERR_SCHEMA });
+  }
+
+  return result.value;
 }
 
 // ============================================================
@@ -369,9 +415,9 @@ export function createEnhancedFetch(
           }
         }
 
-        // Schema validation
+        // Schema validation (Standard Schema or plain function)
         if (config.schema && response.data !== undefined && response.data !== null) {
-          response.data = validateSchema(response.data, config.schema);
+          response.data = await validateSchema(response.data, config.schema);
         }
 
         // Store in cache

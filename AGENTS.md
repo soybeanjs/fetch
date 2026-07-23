@@ -12,6 +12,7 @@ Guidance for AI agents (and humans) working on `@soybeanjs/fetch`.
 src/
 ├── constant.ts        # Shared constants (status codes, error flags, file types)
 ├── types.ts           # All public types & interfaces (single source of truth for types)
+├── standard-schema.ts # Standard Schema spec types (StandardSchemaV1, StandardTypedV1, StandardJSONSchemaV1)
 ├── error.ts           # FetchError + BackendError classes
 ├── message.ts        # MessageStack — request message deduplication
 ├── shared.ts         # HTTP utilities (isHttpSuccess, content-disposition, binary→JSON coercion, downloadFile)
@@ -122,7 +123,7 @@ The library deliberately separates **transport** from **business logic**. Never 
    - `attachAuthHeaders` (Bearer token from `auth.getToken`)
    - **`fetchCore(authedConfig)`** (transport — see below)
    - on `auth.refreshOn` (default 401): `handleAuthRefresh` (single-flight) → re-attach token → refetch
-   - `schema` validation (Zod-like `.parse` or function)
+   - `schema` validation (Standard Schema `~standard.validate()` or plain function; failure throws `FetchError` with `code: ERR_SCHEMA`)
    - cache store
 4. `processResponse(response, opts, instance, allowBackendFail)`:
    - `coerceBinaryToJsonResponse` (blob/arraybuffer → JSON when server returned `application/json`)
@@ -177,17 +178,17 @@ When `onUploadProgress` is set per-request **and** no custom `adapter` is set, `
 
 Each feature is opt-in via `FetchRequestConfig`:
 
-| Feature      | Config                                                           | Behaviour                                                                                                                      |
-| ------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Cache        | `cache: { ttl, methods?, max?, key? }` or `false`                | GET cached within TTL; LRU eviction at `max` (default 100); `false` skips cache for one request                                |
-| Dedupe       | `dedupe: true \| { key? }`                                       | In-flight requests with the same key share one promise                                                                         |
-| Concurrency  | `concurrency: { maxConcurrent }`                                 | Queues excess requests; FIFO                                                                                                   |
-| Debounce     | `debounce: ms`                                                   | Same-key requests within the window are cancelled and restarted (rejects with `ERR_DEBOUNCED`)                                 |
-| Throttle     | `throttle: ms`                                                   | One request per key per interval; rejects others with `ERR_THROTTLED`                                                          |
-| Auth         | `auth: { getToken, refreshToken?, refreshOn?, onUnauthorized? }` | Auto-attaches `Bearer <token>`; on `refreshOn` (default 401) refreshes once (single-flight across concurrent 401s) and retries |
-| Schema       | `schema: ZodSchema \| ((data) => T)`                             | Validates/transforms parsed data; skipped when data is `undefined`/`null`                                                      |
-| Loading      | `onLoadingChange`, `onGlobalLoadingChange`                       | Per-request fires on every start/end; global fires only on 0↔1 transitions                                                     |
-| Slow request | `slowThreshold`, `onSlowRequest`                                 | Fires once after the threshold; `0` disables                                                                                   |
+| Feature      | Config                                                           | Behaviour                                                                                                                                                                                                                      |
+| ------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Cache        | `cache: { ttl, methods?, max?, key? }` or `false`                | GET cached within TTL; LRU eviction at `max` (default 100); `false` skips cache for one request                                                                                                                                |
+| Dedupe       | `dedupe: true \| { key? }`                                       | In-flight requests with the same key share one promise                                                                                                                                                                         |
+| Concurrency  | `concurrency: { maxConcurrent }`                                 | Queues excess requests; FIFO                                                                                                                                                                                                   |
+| Debounce     | `debounce: ms`                                                   | Same-key requests within the window are cancelled and restarted (rejects with `ERR_DEBOUNCED`)                                                                                                                                 |
+| Throttle     | `throttle: ms`                                                   | One request per key per interval; rejects others with `ERR_THROTTLED`                                                                                                                                                          |
+| Auth         | `auth: { getToken, refreshToken?, refreshOn?, onUnauthorized? }` | Auto-attaches `Bearer <token>`; on `refreshOn` (default 401) refreshes once (single-flight across concurrent 401s) and retries                                                                                                 |
+| Schema       | `schema: StandardSchemaV1 \| ((data) => T)`                      | Validates/transforms parsed data via [Standard Schema](https://github.com/standard-schema/standard-schema) (`~standard.validate()`); failure throws `FetchError` (`code: ERR_SCHEMA`); skipped when data is `undefined`/`null` |
+| Loading      | `onLoadingChange`, `onGlobalLoadingChange`                       | Per-request fires on every start/end; global fires only on 0↔1 transitions                                                                                                                                                     |
+| Slow request | `slowThreshold`, `onSlowRequest`                                 | Fires once after the threshold; `0` disables                                                                                                                                                                                   |
 
 `state.cache` / `state.dedupe` / `state.concurrency` / `state.loading` / `state.debounce` / `state.throttle` / `state.auth` / `state.messages` are all live and inspectable. `instance.clearCache()` / `instance.deleteCache(key)` manage cache imperatively.
 
@@ -197,7 +198,7 @@ Each feature is opt-in via `FetchRequestConfig`:
 
 - `FetchError` — base error. Carries `code`, `config`, `request`, `response`, `cause`. Getters: `status`/`statusCode`, `statusText`/`statusMessage`, `data`.
 - `BackendError extends FetchError` — thrown when `isBackendSuccess` returns false and `onBackendFail` does not recover. `code === BACKEND_ERROR_FLAG` (`'BACKEND_ERROR'`).
-- Codes: `ERR_NETWORK`, `ERR_TIMEOUT`, `ERR_ABORTED`, `ERR_BAD_RESPONSE`, `ERR_DEBOUNCED`, `ERR_THROTTLED`, `BACKEND_ERROR`.
+- Codes: `ERR_NETWORK`, `ERR_TIMEOUT`, `ERR_ABORTED`, `ERR_BAD_RESPONSE`, `ERR_DEBOUNCED`, `ERR_THROTTLED`, `ERR_SCHEMA`, `BACKEND_ERROR`.
 
 ---
 

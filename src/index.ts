@@ -7,10 +7,11 @@ export type { MessageEntry } from './message';
 export { parseContentDisposition, downloadFile } from './shared';
 export { createTypedClient, createFlatTypedClient } from './openapi';
 export { FetchError, BackendError } from './error';
-export { BACKEND_ERROR_FLAG } from './constant';
+export { BACKEND_ERROR_FLAG, ERR_SCHEMA } from './constant';
 export { createDefaultOptions, createFetchConfig, createRetryOptions } from './options';
 
 export type * from './types';
+export type * from './standard-schema';
 
 export type { DefaultedRequestOption, ResolvedCreateFetchDefaults } from './options';
 
