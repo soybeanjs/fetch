@@ -46,7 +46,7 @@ createEnhancedFetch pipeline:
     ↓
   on auth.refreshOn (default 401): handleAuthRefresh (single-flight) → re-attach → refetch
     ↓
-  schema validation (Zod-like .parse or function) — skipped when data is undefined/null
+  schema validation (Standard Schema `~standard.validate()` or plain function; failure throws FetchError `code: ERR_SCHEMA`) — skipped when data is undefined/null
     ↓
   cache store
     ↓
@@ -55,17 +55,17 @@ createEnhancedFetch pipeline:
 
 ## Feature Reference
 
-| Feature      | Config                                                           | Behaviour                                                                                                                      |
-| ------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Cache        | `cache: { ttl, methods?, max?, key? }` or `false`                | GET cached within TTL; LRU eviction at `max` (default 100); `false` skips cache for one request                                |
-| Dedupe       | `dedupe: true \| { key? }`                                       | In-flight requests with the same key share one promise                                                                         |
-| Concurrency  | `concurrency: { maxConcurrent }`                                 | Queues excess requests; FIFO                                                                                                   |
-| Debounce     | `debounce: ms`                                                   | Same-key requests within the window are cancelled and restarted (rejects with `ERR_DEBOUNCED`)                                 |
-| Throttle     | `throttle: ms`                                                   | One request per key per interval; rejects others with `ERR_THROTTLED`                                                          |
-| Auth         | `auth: { getToken, refreshToken?, refreshOn?, onUnauthorized? }` | Auto-attaches `Bearer <token>`; on `refreshOn` (default 401) refreshes once (single-flight across concurrent 401s) and retries |
-| Schema       | `schema: ZodSchema \| ((data) => T)`                             | Validates/transforms parsed data; skipped when data is `undefined`/`null`                                                      |
-| Loading      | `onLoadingChange`, `onGlobalLoadingChange`                       | Per-request fires on every start/end; global fires only on 0↔1 transitions                                                     |
-| Slow request | `slowThreshold`, `onSlowRequest`                                 | Fires once after the threshold; `0` disables                                                                                   |
+| Feature      | Config                                                           | Behaviour                                                                                                                                                                                                                      |
+| ------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Cache        | `cache: { ttl, methods?, max?, key? }` or `false`                | GET cached within TTL; LRU eviction at `max` (default 100); `false` skips cache for one request                                                                                                                                |
+| Dedupe       | `dedupe: true \| { key? }`                                       | In-flight requests with the same key share one promise                                                                                                                                                                         |
+| Concurrency  | `concurrency: { maxConcurrent }`                                 | Queues excess requests; FIFO                                                                                                                                                                                                   |
+| Debounce     | `debounce: ms`                                                   | Same-key requests within the window are cancelled and restarted (rejects with `ERR_DEBOUNCED`)                                                                                                                                 |
+| Throttle     | `throttle: ms`                                                   | One request per key per interval; rejects others with `ERR_THROTTLED`                                                                                                                                                          |
+| Auth         | `auth: { getToken, refreshToken?, refreshOn?, onUnauthorized? }` | Auto-attaches `Bearer <token>`; on `refreshOn` (default 401) refreshes once (single-flight across concurrent 401s) and retries                                                                                                 |
+| Schema       | `schema: StandardSchemaV1 \| ((data) => T)`                      | Validates/transforms parsed data via [Standard Schema](https://github.com/standard-schema/standard-schema) (`~standard.validate()`); failure throws `FetchError` (`code: ERR_SCHEMA`); skipped when data is `undefined`/`null` |
+| Loading      | `onLoadingChange`, `onGlobalLoadingChange`                       | Per-request fires on every start/end; global fires only on 0↔1 transitions                                                                                                                                                     |
+| Slow request | `slowThreshold`, `onSlowRequest`                                 | Fires once after the threshold; `0` disables                                                                                                                                                                                   |
 
 ## Key Generators (important)
 
@@ -143,13 +143,20 @@ const request = createRequest(
 
 ### Schema Validation
 
+Accepts any [Standard Schema](https://github.com/standard-schema/standard-schema) (Zod v4+, Valibot, ArkType, ...) or a plain validator function. On failure, throws `FetchError` with `code: ERR_SCHEMA` (message includes all issue paths).
+
 ```ts
-import { z } from 'zod';
+import { z } from 'zod'; // Zod v4+ implements Standard Schema
 
 const userSchema = z.object({ id: z.number(), name: z.string() });
 
 const user = await request.get('/users/1', {
-  schema: userSchema // validates + infers type
+  schema: userSchema // validates via ~standard.validate(), returns result.value
+});
+
+// Plain function (lightweight escape hatch)
+const user2 = await request.get('/users/1', {
+  schema: data => ({ ...data, validated: true })
 });
 ```
 

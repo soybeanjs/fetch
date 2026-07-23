@@ -25,7 +25,7 @@ The library deliberately separates **transport** from **business logic**. Never 
 
 ## Key Files
 
-- `src/core.ts` — `createRequest`, `createFlatRequest`, `createCommonRequest`
+- `src/core.ts` — `createRequest`, `createFlatRequest` (`createCommonRequest` is the internal foundation, not exported from the barrel)
 - `src/fetch.ts` — `processResponse` (runs `isBackendSuccess` → `onBackendFail` → throw `BackendError`)
 - `src/options.ts` — `createDefaultOptions` (applies default `transform` + `backendErrorMsg`)
 - `src/types.ts` — `RequestOption` interface

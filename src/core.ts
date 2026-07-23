@@ -1,7 +1,7 @@
 import { FILE_RESPONSE_TYPES } from './constant';
-import { parseContentDisposition } from './shared';
 import type { FetchError } from './error';
 import { createFetchInstance } from './fetch';
+import { parseContentDisposition } from './file';
 import { createDefaultOptions, createFetchConfig } from './options';
 import type {
   CreateFetchDefaults,

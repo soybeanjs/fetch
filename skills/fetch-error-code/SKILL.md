@@ -18,9 +18,9 @@ This skill works with the error model in `@soybeanjs/fetch` — adding new error
 ## Key Files
 
 - `src/error.ts` — `FetchError` class, `BackendError` class
-- `src/constant.ts` — `BACKEND_ERROR_FLAG` (`'BACKEND_ERROR'`)
+- `src/constant.ts` — `BACKEND_ERROR_FLAG` (`'BACKEND_ERROR'`), `ERR_SCHEMA` (`'ERR_SCHEMA'`)
 - `src/fetch.ts` — throw sites for `ERR_TIMEOUT`, `ERR_ABORTED`, `ERR_NETWORK`, `ERR_BAD_RESPONSE`
-- `src/enhanced.ts` — throw sites for `ERR_DEBOUNCED`, `ERR_THROTTLED`
+- `src/enhanced.ts` — throw sites for `ERR_DEBOUNCED`, `ERR_THROTTLED`, `ERR_SCHEMA` (schema validation failure)
 
 ## Error Model
 
@@ -76,6 +76,7 @@ Detect via `error instanceof BackendError` or `error.code === BACKEND_ERROR_FLAG
 | `ERR_BAD_RESPONSE` | `fetchCore`       | Response status failed `validateStatus` (and not ignored) |
 | `ERR_DEBOUNCED`    | `enhanced.ts`     | Request cancelled by debounce (same key within window)    |
 | `ERR_THROTTLED`    | `enhanced.ts`     | Request rejected by throttle (one per key per interval)   |
+| `ERR_SCHEMA`       | `enhanced.ts`     | Standard Schema validation failed (truthy `issues`)       |
 | `BACKEND_ERROR`    | `processResponse` | `isBackendSuccess` false + `onBackendFail` didn't recover |
 
 ## Handling Errors
@@ -112,6 +113,9 @@ try {
         break;
       case 'ERR_THROTTLED':
         console.log('Throttled (retry later)');
+        break;
+      case 'ERR_SCHEMA':
+        console.error('Schema validation failed:', err.message);
         break;
     }
   }

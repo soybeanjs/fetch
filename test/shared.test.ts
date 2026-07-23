@@ -5,10 +5,9 @@ import {
   isResponseJson,
   transformBlobToJson,
   transformArrayBufferToJson,
-  coerceBinaryToJsonResponse,
-  parseContentDisposition,
-  downloadFile
+  coerceBinaryToJsonResponse
 } from '../src/shared';
+import { parseContentDisposition, downloadFile } from '../src/file';
 import type { FetchResponse } from '../src/types';
 
 function makeResponse(overrides: Partial<FetchResponse> = {}): FetchResponse {

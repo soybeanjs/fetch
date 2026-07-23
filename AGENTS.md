@@ -15,7 +15,8 @@ src/
 ├── standard-schema.ts # Standard Schema spec types (StandardSchemaV1, StandardTypedV1, StandardJSONSchemaV1)
 ├── error.ts           # FetchError + BackendError classes
 ├── message.ts        # MessageStack — request message deduplication
-├── shared.ts         # HTTP utilities (isHttpSuccess, content-disposition, binary→JSON coercion, downloadFile)
+├── shared.ts         # HTTP utilities (isHttpSuccess, content-type detection, binary→JSON coercion)
+├── file.ts           # File helpers (parseContentDisposition, downloadFile)
 ├── utils.ts          # Low-level utilities (URL joining, query serialization, headers, hooks, response detection)
 ├── options.ts        # Default options/config/retry builders
 ├── adapter.ts        # Pluggable transport adapters (default native fetch, upload-progress adapters)
@@ -79,19 +80,32 @@ The library deliberately separates **transport** from **business logic**. Never 
 
 ## 3. Public API Surface
 
+The main entry (`@soybeanjs/fetch`, source `src/index.ts`) exports the transport, business, enhanced, error, and adapter APIs plus all shared types. The OpenAPI typed clients live in a **separate subpath entry** (`@soybeanjs/fetch/openapi`, source `src/openapi.ts`) for on-demand loading.
+
+### Main entry (`.` / `src/index.ts`)
+
 | Export                                                                    | Purpose                                                                            |
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `createRequest(config?, options?)`                                        | Business request instance — **throws** on error; returns transformed `ApiData`.    |
 | `createFlatRequest(config?, options?)`                                    | Business request instance — **never throws**; returns `{ data, error, response }`. |
-| `createCommonRequest(config?, options?)`                                  | Internal foundation shared by the two above.                                       |
 | `$fetch` / `createFetch(defaults?)`                                       | ofetch-compatible transport client. `.raw()`, `.native`, `.create()`.              |
 | `fetchCore(config)`                                                       | Low-level transport (rarely called directly).                                      |
 | `defaultAdapter`, `createAdapterResponse`, `createUploadProgressAdapter`  | Adapter toolkit.                                                                   |
 | `createEnhancedFetch`, `createEnhancedState`, `clearCache`, `deleteCache` | Enhanced-feature primitives.                                                       |
 | `MessageStack`                                                            | Request message dedup stack (used in `onError`).                                   |
-| `createTypedClient`, `createFlatTypedClient`                              | OpenAPI type-safe clients.                                                         |
-| `FetchError`, `BackendError`, `BACKEND_ERROR_FLAG`                        | Error model.                                                                       |
+| `FetchError`, `BackendError`, `BACKEND_ERROR_FLAG`, `ERR_SCHEMA`          | Error model + codes.                                                               |
 | `parseContentDisposition`, `downloadFile`                                 | File helpers.                                                                      |
+| `export type * from './types'` + `'./standard-schema'`                    | All public types (config, response, errors, Standard Schema spec types).           |
+
+> `createCommonRequest` (the internal foundation shared by `createRequest` / `createFlatRequest`) and the option builders (`createDefaultOptions`, `createFetchConfig`, `createRetryOptions`) are **not** re-exported from the barrel — they are internal to `src/core.ts` / `src/options.ts`. Tests import them directly from the source modules.
+
+### OpenAPI subpath (`./openapi` / `src/openapi.ts`)
+
+| Export                                                                      | Purpose                                                                            |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `createTypedClient<Paths, Prefix, Field>(requestInstance, prefix?)`         | Type-safe client wrapping a `RequestInstance` (throws on error).                   |
+| `createFlatTypedClient<Paths, Prefix, Field>(flatRequestInstance, prefix?)` | Type-safe client wrapping a `FlatRequestInstance` (never throws).                  |
+| `TypedClient`, `FlatTypedClient`, `SuccessResponse`, `ErrorResponse`, ...   | OpenAPI type helpers (paths, bodies, responses inferred from a generated `paths`). |
 
 ### Convenience methods
 
@@ -204,6 +218,8 @@ Each feature is opt-in via `FetchRequestConfig`:
 
 ## 9. OpenAPI Layer (`openapi.ts`)
 
+> **Separate build entry** — imported via `@soybeanjs/fetch/openapi`, not the main barrel. `src/openapi.ts` is listed in `vite.config.ts` `pack.entry` and exposed as the `./openapi` subpath in `package.json` `exports`. The `RequestInstance` / `FlatRequestInstance` it wraps come from the main entry (`@soybeanjs/fetch`).
+
 `createTypedClient<Paths, Prefix, Field>(requestInstance, prefix?)` wraps a `RequestInstance` and exposes typed HTTP verbs inferred from a generated `paths` type. `createFlatTypedClient` does the same for `FlatRequestInstance` (never-throws semantics).
 
 The options use a **flattened API** — each OpenAPI parameter category is a top-level field, aligned with `FetchRequestConfig`:
@@ -228,7 +244,7 @@ client.get('/users/{id}', {
 
 - **Package manager:** `pnpm` (workspace). `packageManager: pnpm@11.15.1`.
 - **TypeScript:** `strict` + `strictNullChecks` + `noUnusedLocals` + `isolatedModules`. `moduleResolution: bundler`. `target: ESNext`, `lib: ["DOM", "ESNext"]`.
-- **Build:** `pnpm build` → `vp pack` (vite-plus).
+- **Build:** `pnpm build` → `vp pack` (vite-plus). Two build entries: `src/index.ts` (→ `.`) and `src/openapi.ts` (→ `./openapi` subpath). See `package.json` `exports` + `vite.config.ts` `pack.entry`.
 - **Lint:** `pnpm lint` → `vp lint --fix`.
 - **Typecheck:** `pnpm typecheck` → `tsc --noEmit --skipLibCheck`. Must be zero errors.
 - **Tests:** `pnpm test` → `vitest run`. `pnpm test:watch` / `pnpm test:coverage`.

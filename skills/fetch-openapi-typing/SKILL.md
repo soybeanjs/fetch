@@ -17,8 +17,8 @@ This skill creates type-safe OpenAPI clients that infer URL, parameters, body, a
 
 ## Key Files
 
-- `src/openapi.ts` — `createTypedClient`, `createFlatTypedClient`, all type helpers
-- `src/types.ts` — `RequestInstance`, `FlatRequestInstance`, `FetchRequestConfig`
+- `src/openapi.ts` — **separate build entry** (`@soybeanjs/fetch/openapi`); `createTypedClient`, `createFlatTypedClient`, all type helpers
+- `src/types.ts` — `RequestInstance`, `FlatRequestInstance`, `FetchRequestConfig` (from the main entry `@soybeanjs/fetch`)
 
 ## Flattened API (important)
 
@@ -49,7 +49,8 @@ createTypedClient<Paths, Prefix, Field>(requestInstance, prefix?)
 - `Field` — extracts a single field from the success response (e.g. `'data'` to unwrap an envelope). Default `''` returns the full `SuccessResponse`.
 
 ```ts
-import { createRequest, createTypedClient } from '@soybeanjs/fetch';
+import { createRequest } from '@soybeanjs/fetch';
+import { createTypedClient } from '@soybeanjs/fetch/openapi';
 import type { paths } from './openapi';
 
 const request = createRequest(
@@ -101,7 +102,8 @@ const menus = await client.get('/menu/list'); // no init needed
 `createFlatTypedClient` wraps a `FlatRequestInstance` — success or failure is determined through the return value:
 
 ```ts
-import { createFlatRequest, createFlatTypedClient } from '@soybeanjs/fetch';
+import { createFlatRequest } from '@soybeanjs/fetch';
+import { createFlatTypedClient } from '@soybeanjs/fetch/openapi';
 
 const flatRequest = createFlatRequest(
   { baseURL: 'https://api.example.com' },

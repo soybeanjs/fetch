@@ -32,7 +32,7 @@ export type RequiredKeysOf<T> = {
 // ============================================================
 
 /** Media types recognised in request / response bodies. */
-type SupportedMediaType =
+export type SupportedMediaType =
   | 'application/json'
   | 'application/x-www-form-urlencoded'
   | 'multipart/form-data'
@@ -55,7 +55,7 @@ export type OperationRequestBodyContent<T> = [T] extends [{ requestBody?: never 
       : never;
 
 /** Pick the first matching media type from a `content` map. */
-type ResolveMediaType<C> = C extends { 'application/json': infer B }
+export type ResolveMediaType<C> = C extends { 'application/json': infer B }
   ? B
   : C extends { 'multipart/form-data': infer B }
     ? B
@@ -102,18 +102,18 @@ export type SuccessResponse<T> = T extends { responses: infer R }
 export type ErrorResponse<T> = T extends { responses: infer R } ? ExtractFirstError<R> : never;
 
 /** Extract the JSON body from a response entry, or `unknown` for non-JSON media types. */
-type ExtractMediaTypeBody<Res> = Res extends { content: { 'application/json': infer D } }
+export type ExtractMediaTypeBody<Res> = Res extends { content: { 'application/json': infer D } }
   ? D
   : Res extends { content: Record<SupportedMediaType, any> }
     ? unknown
     : unknown;
 
 /** Best-effort: pick the first 2xx status code and extract its body. */
-type ExtractFirst2xx<R> =
+export type ExtractFirst2xx<R> =
   R extends Record<infer Code, any> ? (Code extends `2${string}` ? ExtractMediaTypeBody<R[Code]> : never) : never;
 
 /** Best-effort: pick the first 4xx or 5xx status code and extract its body. */
-type ExtractFirstError<R> =
+export type ExtractFirstError<R> =
   R extends Record<infer Code, any>
     ? Code extends `4${string}` | `5${string}`
       ? ExtractMediaTypeBody<R[Code]>
@@ -128,22 +128,23 @@ type ExtractFirstError<R> =
 export type OperationParams<T> = T extends { parameters: infer P } ? P : Record<string, never>;
 
 /** Extract the query parameters type from an operation. */
-type OperationQueryParams<T> = T extends { parameters: { query: infer Q } } ? NonNullable<Q> : never;
+export type OperationQueryParams<T> = T extends { parameters: { query: infer Q } } ? NonNullable<Q> : never;
 
 /** Extract the path parameters type from an operation. */
-type OperationPathParams<T> = T extends { parameters: { path: infer P } } ? NonNullable<P> : never;
+export type OperationPathParams<T> = T extends { parameters: { path: infer P } } ? NonNullable<P> : never;
 
 /** Extract the header parameters type from an operation. */
-type OperationHeaderParams<T> = T extends { parameters: { header: infer H } } ? NonNullable<H> : never;
+export type OperationHeaderParams<T> = T extends { parameters: { header: infer H } } ? NonNullable<H> : never;
 
 /** `pathParams` — required when the operation has path params (URL placeholders must be filled). */
-type PathParamsOption<T> = OperationPathParams<T> extends never ? {} : { pathParams: OperationPathParams<T> };
+export type PathParamsOption<T> = OperationPathParams<T> extends never ? {} : { pathParams: OperationPathParams<T> };
 
 /** `query` — optional, typed from the OpenAPI spec when the operation has query params. */
-type QueryParamsOption<T> = OperationQueryParams<T> extends never ? {} : { query?: OperationQueryParams<T> };
+export type QueryParamsOption<T> = OperationQueryParams<T> extends never ? {} : { query?: OperationQueryParams<T> };
 
 /** `headers` — optional, typed from the OpenAPI spec when the operation has header params. */
-type HeaderParamsOption<T> = OperationHeaderParams<T> extends never ? {} : { headers?: OperationHeaderParams<T> };
+export type HeaderParamsOption<T> =
+  OperationHeaderParams<T> extends never ? {} : { headers?: OperationHeaderParams<T> };
 
 /** Determine whether the `body` option is required based on the operation. */
 export type RequestBodyOption<T> =
@@ -180,7 +181,7 @@ export type OpenapiRequestOptions<T> = PathParamsOption<T> &
 // ============================================================
 
 /** Extract the operation type for a given method from a path entry. */
-type OperationForPath<PathEntry, M extends HttpMethod> = PathEntry extends Record<M, infer Op> ? Op : never;
+export type OperationForPath<PathEntry, M extends HttpMethod> = PathEntry extends Record<M, infer Op> ? Op : never;
 
 /**
  * Compute the client return type for an operation.
@@ -188,7 +189,7 @@ type OperationForPath<PathEntry, M extends HttpMethod> = PathEntry extends Recor
  * - When `Field` is `''` (default), returns the full {@link SuccessResponse}.
  * - When `Field` is a string literal, extracts that field from the success response.
  */
-type ClientResponse<Op, Field extends string> = Field extends ''
+export type ClientResponse<Op, Field extends string> = Field extends ''
   ? SuccessResponse<Op>
   : SuccessResponse<Op> extends Record<Field, infer V>
     ? V
@@ -282,10 +283,10 @@ export type FlatTypedClient<Paths extends Record<string, any>, Field extends str
 // ============================================================
 
 /** Regex to match path parameters like `{id}` */
-const PATH_PARAM_RE = /\{([^}]+)\}/g;
+export const PATH_PARAM_RE = /\{([^}]+)\}/g;
 
 /** Replace path parameters (e.g. `{id}`) with actual values from `pathParams`. */
-function replacePathParams(path: string, pathParams?: Record<string, unknown>): string {
+export function replacePathParams(path: string, pathParams?: Record<string, unknown>): string {
   if (!pathParams) return path;
 
   return path.replace(PATH_PARAM_RE, (_, key: string) => {
@@ -304,7 +305,12 @@ function replacePathParams(path: string, pathParams?: Record<string, unknown>): 
  * `pathParams` is used for URL placeholder replacement; `query`, `headers`, and `body`
  * are passed through directly to the fetch config.
  */
-function buildFetchConfig(url: string, prefix: string, method: HttpMethod, options: any): FetchRequestConfig<'json'> {
+export function buildFetchConfig(
+  url: string,
+  prefix: string,
+  method: HttpMethod,
+  options: any
+): FetchRequestConfig<'json'> {
   const { pathParams, query, headers, body, ...restConfig } = options || {};
 
   const resolvedUrl = replacePathParams(`${prefix}${url}`, pathParams);
@@ -319,7 +325,7 @@ function buildFetchConfig(url: string, prefix: string, method: HttpMethod, optio
   };
 }
 
-type PathsRemovedPrefix<Paths extends Record<string, any>, Prefix extends string> = {
+export type PathsRemovedPrefix<Paths extends Record<string, any>, Prefix extends string> = {
   [P in keyof Paths as P extends `${Prefix}${infer S}` ? S : never]: Paths[P];
 };
 

@@ -664,6 +664,8 @@ console.log(response.data); // 错误页面数据
 
 通过 [openapi-typescript](https://openapi-ts.dev/) 生成 `paths` 类型后,可创建**全类型安全**的请求客户端。
 
+OpenAPI 类型安全客户端通过独立的 `@soybeanjs/fetch/openapi` 子路径导入,按需加载、减小打包体积:
+
 > **前置步骤**:使用 `openapi-typescript` 将 `openapi.json` 生成类型文件:
 >
 > ```bash
@@ -673,7 +675,8 @@ console.log(response.data); // 错误页面数据
 #### createTypedClient
 
 ```typescript
-import { createRequest, createTypedClient } from '@soybeanjs/fetch';
+import { createRequest } from '@soybeanjs/fetch';
+import { createTypedClient } from '@soybeanjs/fetch/openapi';
 import type { paths } from './openapi.d.ts';
 
 const request = createRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
@@ -707,7 +710,8 @@ const response = await client.raw.get('/menu/list', {
 包装 `createFlatRequest` 创建的扁平化实例,**不抛出异常**:
 
 ```typescript
-import { createFlatRequest, createFlatTypedClient } from '@soybeanjs/fetch';
+import { createFlatRequest } from '@soybeanjs/fetch';
+import { createFlatTypedClient } from '@soybeanjs/fetch/openapi';
 
 const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
 
@@ -1112,12 +1116,12 @@ const request = createRequest(
 
 ### 20. 响应 Schema 验证
 
-通过 `schema` 配置项在运行时验证响应数据结构,兼容 Zod,也支持普通验证函数。
+通过 `schema` 配置项在运行时验证响应数据结构,兼容 [Standard Schema](https://github.com/standard-schema/standard-schema) 规范(Zod v4+、Valibot、ArkType 等),也支持普通验证函数。
 
 ```typescript
-import { z } from 'zod';
+import { z } from 'zod'; // Zod v4+ 已实现 Standard Schema
 
-// 使用 Zod Schema
+// 使用 Standard Schema(Zod / Valibot / ArkType 等)
 const UserSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -1127,7 +1131,7 @@ const UserSchema = z.object({
 const user = await request.get('/user', { schema: UserSchema });
 // user 已通过运行时验证,类型安全
 
-// 使用普通验证函数
+// 使用普通验证函数(轻量 escape hatch)
 const user2 = await request.get('/user', {
   schema: data => {
     if (!data.id) throw new Error('Missing id');
@@ -1136,7 +1140,19 @@ const user2 = await request.get('/user', {
 });
 ```
 
-验证失败时抛出异常(如 Zod 的 `ZodError`),可通过 `onError` 统一处理。
+校验失败时抛出 `FetchError`(`code: 'ERR_SCHEMA'`),错误消息包含所有 issue 的路径与描述,可通过 `onError` 统一处理:
+
+```typescript
+import { ERR_SCHEMA } from '@soybeanjs/fetch';
+
+try {
+  await request.get('/user', { schema: UserSchema });
+} catch (error) {
+  if (error.code === ERR_SCHEMA) {
+    console.error('Schema 校验失败:', error.message);
+  }
+}
+```
 
 ### 21. 请求/响应数据转换
 
@@ -1384,7 +1400,7 @@ interface $Fetch {
 
 ### createTypedClient
 
-基于 openapi-typescript 生成的 `paths` 类型创建类型安全的客户端。
+基于 openapi-typescript 生成的 `paths` 类型创建类型安全的客户端。从 `@soybeanjs/fetch/openapi` 子路径导入。
 
 ```typescript
 function createTypedClient<Paths, Prefix = '', Field = ''>(
@@ -1395,7 +1411,7 @@ function createTypedClient<Paths, Prefix = '', Field = ''>(
 
 ### createFlatTypedClient
 
-创建类型安全的扁平化客户端,不抛出异常。
+创建类型安全的扁平化客户端,不抛出异常。从 `@soybeanjs/fetch/openapi` 子路径导入。
 
 ```typescript
 function createFlatTypedClient<Paths, Prefix = '', Field = ''>(
@@ -1485,13 +1501,6 @@ interface UploadProgressEvent {
   lengthComputable: boolean; // 总大小是否已知
 }
 ```
-
-> **@deprecated**:以下废弃名称仍为向后兼容而导出,但将在未来版本中移除:
->
-> - `OpenapiClient` → 请使用 `TypedClient`
-> - `FlatOpenapiClient` → 请使用 `FlatTypedClient`
-> - `createOpenapiClient` → 请使用 `createTypedClient`
-> - `createFlatOpenapiClient` → 请使用 `createFlatTypedClient`
 
 ## ❓ FAQ
 
