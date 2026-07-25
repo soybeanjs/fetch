@@ -1,23 +1,23 @@
 ---
 name: 'fetch-openapi-typing'
-description: 'Creates type-safe OpenAPI clients (createTypedClient/createFlatTypedClient) inferred from a generated paths type. Invoke when user wants type-safe API calls, OpenAPI integration, typed path/query/body params, or response field extraction.'
+description: 'Creates type-safe OpenAPI clients (createTypedClient/toFlatTypedClient) inferred from a generated paths type. Invoke when user wants type-safe API calls, OpenAPI integration, typed path/query/body params, or response field extraction.'
 ---
 
 # Fetch OpenAPI Typing
 
-This skill creates type-safe OpenAPI clients that infer URL, parameters, body, and response types from a generated `paths` type. It wraps a `RequestInstance` or `FlatRequestInstance` with typed HTTP verbs.
+This skill creates type-safe OpenAPI clients that infer URL, parameters, body, and response types from a generated `paths` type. Both client variants wrap a `RequestInstance` (returned by `createRequest`); the flat variant is obtained via `toFlatTypedClient(request, prefix?)` and never throws.
 
 ## When to Invoke
 
 - User wants type-safe API clients from an OpenAPI spec
-- User mentions `createTypedClient` or `createFlatTypedClient`
+- User mentions `createTypedClient` or `toFlatTypedClient`
 - User wants typed path/query/body parameters
 - User wants to unwrap a response envelope field (e.g. `data`)
 - User wants to extend the OpenAPI type helpers
 
 ## Key Files
 
-- `src/openapi.ts` — **separate build entry** (`@soybeanjs/fetch/openapi`); `createTypedClient`, `createFlatTypedClient`, all type helpers
+- `src/openapi.ts` — **separate build entry** (`@soybeanjs/fetch/openapi`); `createTypedClient`, `toFlatTypedClient`, all type helpers
 - `src/types.ts` — `RequestInstance`, `FlatRequestInstance`, `FetchRequestConfig` (from the main entry `@soybeanjs/fetch`)
 
 ## Flattened API (important)
@@ -99,20 +99,25 @@ const menus = await client.get('/menu/list'); // no init needed
 
 ## Flat Client (never throws)
 
-`createFlatTypedClient` wraps a `FlatRequestInstance` — success or failure is determined through the return value:
+`toFlatTypedClient` accepts the same `RequestInstance` as `createTypedClient` (no separate flat request constructor is needed). Internally it calls `requestInstance.withResponse(...)` wrapped in a `try/catch` to produce a never-throwing client; the throwing client and flat client share the same underlying `state`/cache/auth.
 
 ```ts
-import { createFlatRequest } from '@soybeanjs/fetch';
-import { createFlatTypedClient } from '@soybeanjs/fetch/openapi';
+import { createRequest } from '@soybeanjs/fetch';
+import { createTypedClient, toFlatTypedClient } from '@soybeanjs/fetch/openapi';
+import type { paths } from './openapi';
 
-const flatRequest = createFlatRequest(
+const request = createRequest(
   { baseURL: 'https://api.example.com' },
   { isBackendSuccess: r => r.data.code === 200 }
 );
 
-const client = createFlatTypedClient<paths, '/api/v1', 'data'>(flatRequest, '/api/v1');
+// Throwing client
+const client = createTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
 
-const { data, error } = await client.get('/menu/list', {
+// Never-throwing client — wraps the same request instance
+const flatClient = toFlatTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
+
+const { data, error } = await flatClient.get('/menu/list', {
   query: { page: 1, pageSize: 10 }
 });
 
@@ -165,7 +170,7 @@ When modifying `openapi.ts`:
 - `pathParams` is **required** when the operation has path params (URL placeholders must be filled).
 - `body` is required/optional per the OpenAPI spec (`IsOperationRequestBodyOptional`).
 - `query`/`headers` are optional, typed from the spec when present.
-- `createTypedClient` wraps a `RequestInstance` (throws); `createFlatTypedClient` wraps a `FlatRequestInstance` (never throws).
+- `createTypedClient` wraps a `RequestInstance` and throws on error; `toFlatTypedClient` wraps the same `RequestInstance` and resolves to `{ data, error, response }` (never throws). Both share the underlying instance's state.
 
 ## Common Pitfalls
 

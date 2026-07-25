@@ -22,7 +22,7 @@ The library intentionally keeps **two distinct `onRequest` signatures** — do n
 | Layer     | API                                    | Signature                                                | Mode                                        |
 | --------- | -------------------------------------- | -------------------------------------------------------- | ------------------------------------------- |
 | Transport | `$fetch` / `createFetch` / `fetchCore` | `(context: FetchContext) => void \| Promise<void>`       | **Context-mode** (mutate `context.options`) |
-| Business  | `createRequest` / `createFlatRequest`  | `(config) => ResolvedFetchRequestConfig \| Promise<...>` | **Return-value mode** (return new config)   |
+| Business  | `createRequest` (and `toFlatRequest` wrappers) | `(config) => ResolvedFetchRequestConfig \| Promise<...>` | **Return-value mode** (return new config) |
 
 For business hooks, use the `fetch-business-hook` skill instead.
 

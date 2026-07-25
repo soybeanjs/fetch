@@ -2,7 +2,6 @@ import type { FetchError } from './error';
 import type {
   FetchRequestConfig,
   FetchResponse,
-  FlatRequestInstance,
   MappedType,
   RequestInstance,
   ResponseType
@@ -445,23 +444,30 @@ export function createTypedClient<
 }
 
 /**
- * Create a type-safe flat client based on the generated `paths` type.
+ * Wrap a {@link RequestInstance} into a type-safe **flat** client that never throws.
  *
- * Wraps an existing {@link FlatRequestInstance} (created by `createFlatRequest`) and provides
- * typed HTTP methods (`get`, `post`, `put`, `delete`, …) that never throw — success or failure
- * is determined through the return value `{ data, error }`.
+ * 与 {@link createTypedClient} 对应的扁平化版本:基于同一个 `requestInstance`,
+ * 提供 OpenAPI 推断类型的 HTTP 方法,但所有方法均不抛异常,而是返回
+ * `{ data, error, response }`。
+ *
+ * 内部通过 `requestInstance.withResponse` + `try/catch` 实现,与
+ * {@link toFlatRequest} 共享同一套错误形状。无需先调用 `createFlatRequest`。
  *
  * @example
  * ```typescript
- * import { createFlatRequest } from '@soybeanjs/fetch';
- * import { createFlatTypedClient } from '@soybeanjs/fetch';
+ * import { createRequest, toFlatRequest } from '@soybeanjs/fetch';
+ * import { createTypedClient, toFlatTypedClient } from '@soybeanjs/fetch/openapi';
  * import type { paths } from './openapi';
  *
- * const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, { ... });
+ * const request = createRequest({ baseURL: 'https://api.example.com' }, { ... });
  *
- * const client = createFlatTypedClient<paths, '/api/v1', 'data'>(flatRequest, '/api/v1');
+ * // Throwing client
+ * const client = createTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
  *
- * const { data, error } = await client.get('/menu/list', {
+ * // Never-throwing client — wraps the same request instance
+ * const flatClient = toFlatTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
+ *
+ * const { data, error } = await flatClient.get('/menu/list', {
  *   query: { page: 1, pageSize: 10 }
  * });
  *
@@ -472,12 +478,12 @@ export function createTypedClient<
  * }
  * ```
  */
-export function createFlatTypedClient<
+export function toFlatTypedClient<
   Paths extends Record<string, any>,
   Prefix extends string = '',
   Field extends string = ''
 >(
-  flatRequestInstance: FlatRequestInstance<any, any>,
+  requestInstance: RequestInstance<any, any>,
   prefix: Prefix = '' as Prefix
 ): FlatTypedClient<PathsRemovedPrefix<Paths, Prefix>, Field> {
   const methods: readonly HttpMethod[] = ['get', 'post', 'put', 'delete', 'patch', 'options', 'head', 'trace'];
@@ -485,16 +491,30 @@ export function createFlatTypedClient<
   const client = {} as FlatTypedClient<PathsRemovedPrefix<Paths, Prefix>, Field>;
 
   for (const method of methods) {
-    (client as any)[method] = (url: string, options?: any) => {
-      return flatRequestInstance(buildFetchConfig(url, prefix, method, options));
+    (client as any)[method] = async (url: string, options?: any) => {
+      try {
+        const { data, response } = await requestInstance.withResponse(
+          buildFetchConfig(url, prefix, method, options)
+        );
+        return { data, error: null, response };
+      } catch (err) {
+        const error = err as FetchError;
+        return { data: null, error, response: error.response };
+      }
     };
   }
 
   const rawClient = {} as FlatTypedClient<PathsRemovedPrefix<Paths, Prefix>, Field>['raw'];
 
   for (const method of methods) {
-    (rawClient as any)[method] = (url: string, options?: any) => {
-      return flatRequestInstance.raw(buildFetchConfig(url, prefix, method, options));
+    (rawClient as any)[method] = async (url: string, options?: any) => {
+      try {
+        const response = await requestInstance.raw(buildFetchConfig(url, prefix, method, options));
+        return { data: response, error: null, response };
+      } catch (err) {
+        const error = err as FetchError;
+        return { data: null, error, response: error.response };
+      }
     };
   }
 

@@ -6,7 +6,7 @@
 //  subpath entry — see `src/openapi.ts`.
 // ============================================================
 
-export { createRequest, createFlatRequest } from './core';
+export { createRequest, toFlatRequest } from './core';
 export { $fetch, createFetch } from './fetch';
 export { defaultAdapter, createAdapterResponse, createUploadProgressAdapter } from './adapter';
 export { createEnhancedFetch, createEnhancedState, clearCache, deleteCache } from './enhanced';

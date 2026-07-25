@@ -1,34 +1,34 @@
 ---
 name: 'fetch-business-hook'
-description: 'Adds business-logic hooks (transform, isBackendSuccess, onBackendFail, onError, onRequest) to createRequest/createFlatRequest. Invoke when user wants business response handling, backend error recovery, or data transformation.'
+description: 'Adds business-logic hooks (transform, isBackendSuccess, onBackendFail, onError, onRequest) to createRequest. Flat (never-throwing) instances are obtained by wrapping a request with toFlatRequest. Invoke when user wants business response handling, backend error recovery, or data transformation.'
 ---
 
 # Fetch Business Hook
 
-This skill adds business-logic hooks via `RequestOption` — the second parameter of `createRequest` / `createFlatRequest`. Business hooks run **after** the transport layer and operate on parsed `FetchResponse` objects.
+This skill adds business-logic hooks via `RequestOption` — the second parameter of `createRequest`. Flat (never-throwing) instances are produced by wrapping the resulting `RequestInstance` with `toFlatRequest`. Business hooks run **after** the transport layer and operate on parsed `FetchResponse` objects.
 
 ## When to Invoke
 
 - User wants to add `transform`, `isBackendSuccess`, `onBackendFail`, `onError`, or business-level `onRequest`
 - User wants to unwrap a response envelope (e.g. `{ code, data, message }` → `data`)
 - User wants backend-error recovery (e.g. refresh token on backend failure, retry once)
-- User asks about `createRequest` vs `createFlatRequest` business options
+- User asks about throwing vs never-throwing usage of `createRequest` / `toFlatRequest`
 
 ## Two-Layer Architecture (critical)
 
 The library deliberately separates **transport** from **business logic**. Never collapse the two layers:
 
 - **Transport layer** (`fetchCore`, `$fetch`): hooks are context-mode `(context) => void`. Use the `fetch-transport-hook` skill instead.
-- **Business layer** (`createRequest`/`createFlatRequest`): hooks are in `RequestOption`. This skill.
+- **Business layer** (`createRequest`, plus `toFlatRequest` wrappers): hooks are in `RequestOption`. This skill.
 
-`createRequest` must keep the **dual-parameter design** (`config` for transport, `options` for business). Do not merge it into `createFetch` — doing so breaks the `onBackendFail` retry chain by skipping `opts.onRequest` and `processResponse`.
+`createRequest` must keep the **dual-parameter design** (`config` for transport, `options` for business). Do not merge it into `createFetch` — doing so breaks the `onBackendFail` retry chain by skipping `opts.onRequest` and `processResponse`. Flat instances are wrappers produced by `toFlatRequest(request)` — they reuse the underlying `RequestInstance` and must not duplicate the business pipeline.
 
 ## Key Files
 
-- `src/core.ts` — `createRequest`, `createFlatRequest` (`createCommonRequest` is the internal foundation, not exported from the barrel)
+- `src/core.ts` — `createRequest`, `toFlatRequest` (`createCommonRequest` is the internal foundation, not exported from the barrel). `RequestInstance.withResponse(config)` is the single post-processing entry used by both the throwing main call and `toFlatRequest`.
 - `src/fetch.ts` — `processResponse` (runs `isBackendSuccess` → `onBackendFail` → throw `BackendError`)
 - `src/options.ts` — `createDefaultOptions` (applies default `transform` + `backendErrorMsg`)
-- `src/types.ts` — `RequestOption` interface
+- `src/types.ts` — `RequestOption`, `RequestInstance.withResponse`
 
 ## RequestOption Interface
 
@@ -52,7 +52,7 @@ interface RequestOption<ResponseData = any, ApiData = ResponseData> {
 - **`onRequest`** — **Return-value mode**: must return the (possibly mutated) config. Use `config.headers.set(key, value)` to add headers (headers is a native `Headers` instance). This is **distinct** from transport-layer `onRequest` which is context-mode.
 - **`isBackendSuccess`** — **Required.** Checks the backend business code (e.g. `response.data.code === 200`), not HTTP status.
 - **`onBackendFail`** — Recovery hook. Return a new `FetchResponse` to retry; the new response is re-validated by `isBackendSuccess` but `onBackendFail` is **NOT** re-called (prevents infinite loops). Call `instance(config)` to re-fetch.
-- **`onError`** — Called on any failure (HTTP error or BackendError), then the error is re-thrown. For `createFlatRequest`, the error is captured into `{ data: null, error }` instead.
+- **`onError`** — Called on any failure (HTTP error or BackendError), then the error is re-thrown. For `toFlatRequest` wrappers, the error is captured into `{ data: null, error }` after `onError` runs.
 
 ## Pipeline
 
@@ -66,7 +66,7 @@ interface RequestOption<ResponseData = any, ApiData = ResponseData> {
    - opts.isBackendSuccess(response) → success
    - else: opts.onBackendFail(response, instance) → may return new FetchResponse to retry (re-validated, onBackendFail NOT re-called)
    - else: throw BackendError (code === 'BACKEND_ERROR')
-5. opts.onError(error) on failure, then re-throw (or capture for flat)
+5. opts.onError(error) on failure, then re-throw (or capture for flat wrappers)
 ```
 
 ## Example: Standard Request with Envelope
@@ -102,17 +102,19 @@ const request = createRequest(
 const data = await request.get('/users/1');
 ```
 
-## Example: Flat Request (never throws)
+## Example: Flat Request via toFlatRequest (never throws)
 
 ```ts
-import { createFlatRequest } from '@soybeanjs/fetch';
+import { createRequest, toFlatRequest } from '@soybeanjs/fetch';
 
-const request = createFlatRequest(
-  { baseURL: 'https://api.example.com' },
-  {
-    isBackendSuccess: response => response.data.code === 200,
-    transform: response => response.data.data
-  }
+const request = toFlatRequest(
+  createRequest(
+    { baseURL: 'https://api.example.com' },
+    {
+      isBackendSuccess: response => response.data.code === 200,
+      transform: response => response.data.data
+    }
+  )
 );
 
 const { data, error } = await request.get('/users/1');
@@ -123,15 +125,16 @@ if (error) {
 }
 ```
 
-## createRequest vs createFlatRequest
+## createRequest vs toFlatRequest
 
-| Feature        | `createRequest`        | `createFlatRequest`                            |
-| -------------- | ---------------------- | ---------------------------------------------- |
-| On error       | Throws                 | Resolves to `{ data: null, error, response? }` |
-| Return value   | Transformed `ApiData`  | `{ data, error, response }`                    |
-| `onError` hook | Called, then re-throws | Called, then captured into `error`             |
+| Feature        | `request()` / `request.get()` (throwing) | `toFlatRequest(request)` (never throws)        |
+| -------------- | ---------------------------------------- | ---------------------------------------------- |
+| On error       | Throws                                   | Resolves to `{ data: null, error, response? }` |
+| Return value   | Transformed `ApiData`                    | `{ data, error, response }`                    |
+| `onError` hook | Called, then re-throws                   | Called on the underlying instance, then captured into `error` |
+| `state`/`instance` | Direct access                         | Reused from the wrapped `RequestInstance`      |
 
-Both expose `.get/.post/.put/.delete/.patch`, `.raw()` (bypasses `transform`), `.state` (EnhancedState), and `.instance` (underlying FetchInstance).
+Both expose `.get/.post/.put/.delete/.patch`, `.raw()` (bypasses `transform`), `.state` (EnhancedState), and `.instance` (underlying FetchInstance). The throwing instance also exposes `.withResponse(config) → { data, response }` (still throws).
 
 ## Hard Constraints
 

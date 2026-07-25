@@ -50,7 +50,7 @@ Once installed, the skills are placed in the `skills/` directory and the AI assi
 | `fetch-transport-hook`   | Add ofetch-style transport hooks (`onRequest` / `onResponse` / `onRequestError` / `onResponseError`)            | `fetch.ts` + `types.ts`             |
 | `fetch-enhanced-feature` | Add enhanced features (cache / dedupe / concurrency / debounce / throttle / auth / schema / loading)            | `enhanced.ts`                       |
 | `fetch-retry-timeout`    | Configure retry count / delay / condition, timeout control, custom retryable status codes                       | `fetch.ts` + `options.ts`           |
-| `fetch-openapi-typing`   | Extend OpenAPI type-safe clients (`createTypedClient` / `createFlatTypedClient`)                                | `openapi.ts`                        |
+| `fetch-openapi-typing`   | Extend OpenAPI type-safe clients (`createTypedClient` / `toFlatTypedClient`)                                    | `openapi.ts`                        |
 | `fetch-error-code`       | Add custom error codes, handle the `FetchError` / `BackendError` error model                                    | `error.ts` + `constant.ts`          |
 | `fetch-test-writer`      | Write tests following project conventions (vitest + global fetch mock + type-safe)                              | `test/helpers.ts` + `test/setup.ts` |
 
@@ -130,14 +130,15 @@ const data = await request({
 });
 ```
 
-### Flat Response Instance
+### Flat Response Instance (toFlatRequest)
 
-Never throws — determine success/failure via the return value:
+Never throws — determine success/failure via the return value. `toFlatRequest` is a lightweight wrapper that reuses the same underlying `RequestInstance`'s `state` / `instance` / `cache`, so the request pipeline is not duplicated:
 
 ```typescript
-import { createFlatRequest } from '@soybeanjs/fetch';
+import { createRequest, toFlatRequest } from '@soybeanjs/fetch';
 
-const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, options);
+const request = createRequest({ baseURL: 'https://api.example.com' }, options);
+const flatRequest = toFlatRequest(request);
 
 const { data, error, response } = await flatRequest({
   url: '/users',
@@ -579,11 +580,11 @@ const fileResponse = await request.raw({
 // fileResponse.data contains { file, filename, contentType }
 ```
 
-> The flat instance created by `createFlatRequest` also provides `flatRequest.raw()` with the same semantics, but never throws.
+> The flat instance obtained via `toFlatRequest(request)` also provides `flatRequest.raw()` with the same semantics, but never throws.
 
 ### 8. HTTP Method Shorthands
 
-Both `RequestInstance` and `FlatRequestInstance` provide shorthand methods for common HTTP verbs:
+Both `RequestInstance` (returned by `createRequest`, exposed via `withResponse`) and the `FlatRequestInstance` obtained from `toFlatRequest` provide shorthand methods for common HTTP verbs:
 
 ```typescript
 // GET request
@@ -705,19 +706,19 @@ const response = await client.raw.get('/menu/list', {
 });
 ```
 
-#### createFlatTypedClient
+#### toFlatTypedClient
 
-Wraps a flat instance created by `createFlatRequest`, **never throws**:
+Wraps a `RequestInstance` to produce a **never-throwing** type-safe client. Uses the same request instance as `createTypedClient` (shared `state` / `cache` / auth):
 
 ```typescript
-import { createFlatRequest } from '@soybeanjs/fetch';
-import { createFlatTypedClient } from '@soybeanjs/fetch/openapi';
+import { createRequest } from '@soybeanjs/fetch';
+import { createTypedClient, toFlatTypedClient } from '@soybeanjs/fetch/openapi';
 
-const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
+const request = createRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
 
-const client = createFlatTypedClient<paths, '/api/v1', 'data'>(flatRequest, '/api/v1');
+const flatClient = toFlatTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
 
-const { data, error } = await client.get('/menu/list', {
+const { data, error } = await flatClient.get('/menu/list', {
   query: { page: 1 }
 });
 
@@ -732,7 +733,7 @@ if (error) {
 
 The native `fetch()` API **does not support upload progress events**. This library bridges that gap via the `onUploadProgress` config option — when set, the library automatically switches to a progress-capable adapter for that request, with no manual adapter management required.
 
-Works with all APIs: `createRequest`, `createFlatRequest`, `$fetch` / `createFetch`. Can be used at the instance level or per-request.
+Works with all APIs: `createRequest` (including flat instances obtained via `toFlatRequest`), `$fetch` / `createFetch`. Can be used at the instance level or per-request.
 
 **Cross-runtime support** — the library auto-selects the best mechanism:
 
@@ -799,11 +800,13 @@ The `onUploadProgress` callback receives an `UploadProgressEvent` object:
 
 ```typescript
 import { ref } from 'vue';
-import { createFlatRequest } from '@soybeanjs/fetch';
+import { createRequest, toFlatRequest } from '@soybeanjs/fetch';
 
 const uploadProgress = ref(0);
 
-const request = createFlatRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
+const request = toFlatRequest(
+  createRequest({ baseURL: 'https://api.example.com' }, {/* ... */})
+);
 
 async function handleUpload(file: File) {
   const formData = new FormData();
@@ -1252,18 +1255,29 @@ Create a standard request instance.
 function createRequest<ResponseData, ApiData>(
   config?: FetchRequestConfig,
   options?: RequestOption<ResponseData, ApiData>
-): RequestInstance<ApiData>;
+): RequestInstance<ResponseData, ApiData>;
 ```
 
-### createFlatRequest
+### toFlatRequest
 
-Create a flat request instance that never throws.
+Wrap a request instance created by `createRequest` into a flat request instance that never throws. The flat instance reuses the original instance's `state`, `instance`, cache, and auth.
 
 ```typescript
-function createFlatRequest<ResponseData, ApiData>(
-  config?: FetchRequestConfig,
-  options?: RequestOption<ResponseData, ApiData>
+function toFlatRequest<ResponseData, ApiData>(
+  request: RequestInstance<ResponseData, ApiData>
 ): FlatRequestInstance<ResponseData, ApiData>;
+```
+
+### RequestInstance.withResponse
+
+Perform a request and return **both the transformed data and the full FetchResponse**. Still throws on error — intended for wrappers such as `toFlatRequest`.
+
+```typescript
+interface RequestInstance<ResponseData = any, ApiData = ResponseData> {
+  withResponse<T = ApiData, R extends ResponseType = 'json'>(
+    config: FetchRequestConfig<R>
+  ): Promise<{ data: MappedType<R, T>; response: FetchResponse<ResponseData> }>;
+}
 ```
 
 ### createFetch / $fetch
@@ -1298,13 +1312,13 @@ function createTypedClient<Paths, Prefix = '', Field = ''>(
 ): TypedClient<Paths, Prefix, Field>;
 ```
 
-### createFlatTypedClient
+### toFlatTypedClient
 
-Create a type-safe flat client that never throws. Imported from the `@soybeanjs/fetch/openapi` subpath.
+Create a type-safe flat client that never throws. Accepts a plain `RequestInstance` (same as `createTypedClient`) and internally uses `withResponse` + `try/catch` to produce a flat return shape. Imported from the `@soybeanjs/fetch/openapi` subpath.
 
 ```typescript
-function createFlatTypedClient<Paths, Prefix = '', Field = ''>(
-  flatRequestInstance: FlatRequestInstance<any, any, any>,
+function toFlatTypedClient<Paths, Prefix = '', Field = ''>(
+  requestInstance: RequestInstance<any, any>,
   prefix?: Prefix
 ): FlatTypedClient<Paths, Prefix, Field>;
 ```
@@ -1417,10 +1431,10 @@ interface UploadProgressEvent {
 6. `instance.request(config)` → `instance(config)` (no `.request` method)
 7. Replace `data` → `body` (request body), `params` → `query` (query parameters)
 
-### Why two request instances?
+### Why two calling styles?
 
-- **createRequest**: For most scenarios, throws on failure, use try-catch to handle
-- **createFlatRequest**: For scenarios needing unified success/failure handling, never throws, judge by return value
+- **Calling `request()` / `request.get()` directly** (throwing style): For most scenarios, throws on failure, use try-catch to handle
+- **Calling after wrapping with `toFlatRequest(request)`** (flat style): For scenarios needing unified success/failure handling, never throws, judge by the `{ data, error, response }` return value
 
 ### When to use $fetch vs createRequest?
 

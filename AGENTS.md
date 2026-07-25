@@ -22,8 +22,8 @@ src/
 ├── adapter.ts        # Pluggable transport adapters (default native fetch, upload-progress adapters)
 ├── enhanced.ts       # Enhanced features (cache, dedupe, concurrency, loading, debounce, throttle, auth, schema)
 ├── fetch.ts          # Core transport: fetchCore, createFetchInstance, mergeConfig, $fetch / createFetch
-├── core.ts           # Business-logic layer: createRequest, createFlatRequest, createCommonRequest
-├── openapi.ts        # Type-safe OpenAPI client generators (createTypedClient, createFlatTypedClient)
+├── core.ts           # Business-logic layer: createRequest, toFlatRequest, createCommonRequest
+├── openapi.ts        # Type-safe OpenAPI client generators (createTypedClient, toFlatTypedClient)
 └── index.ts          # Public re-exports
 
 test/
@@ -40,7 +40,7 @@ The library deliberately separates **transport** from **business logic**. Never 
 
 ```
                           ┌─────────────────────────────────────────────┐
-   User code              │  createRequest / createFlatRequest          │
+   User code              │  createRequest / toFlatRequest              │
                           │  (business: transform, isBackendSuccess,   │
                           │   onBackendFail, onError, onRequest[opts])  │
                           └──────────────────┬──────────────────────────┘
@@ -87,7 +87,7 @@ The main entry (`@soybeanjs/fetch`, source `src/index.ts`) exports the transport
 | Export                                                                    | Purpose                                                                            |
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `createRequest(config?, options?)`                                        | Business request instance — **throws** on error; returns transformed `ApiData`.    |
-| `createFlatRequest(config?, options?)`                                    | Business request instance — **never throws**; returns `{ data, error, response }`. |
+| `toFlatRequest(request)`                                                  | Wraps a `RequestInstance` into a `FlatRequestInstance` — **never throws**; returns `{ data, error, response }`. Shares the underlying `instance` / `state` / cache with the original. |
 | `$fetch` / `createFetch(defaults?)`                                       | ofetch-compatible transport client. `.raw()`, `.native`, `.create()`.              |
 | `fetchCore(config)`                                                       | Low-level transport (rarely called directly).                                      |
 | `defaultAdapter`, `createAdapterResponse`, `createUploadProgressAdapter`  | Adapter toolkit.                                                                   |
@@ -97,19 +97,21 @@ The main entry (`@soybeanjs/fetch`, source `src/index.ts`) exports the transport
 | `parseContentDisposition`, `downloadFile`                                 | File helpers.                                                                      |
 | `export type * from './types'` + `'./standard-schema'`                    | All public types (config, response, errors, Standard Schema spec types).           |
 
-> `createCommonRequest` (the internal foundation shared by `createRequest` / `createFlatRequest`) and the option builders (`createDefaultOptions`, `createFetchConfig`, `createRetryOptions`) are **not** re-exported from the barrel — they are internal to `src/core.ts` / `src/options.ts`. Tests import them directly from the source modules.
+> `createCommonRequest` (the internal foundation used by `createRequest`) and the option builders (`createDefaultOptions`, `createFetchConfig`, `createRetryOptions`) are **not** re-exported from the barrel — they are internal to `src/core.ts` / `src/options.ts`. Tests import them directly from the source modules.
 
 ### OpenAPI subpath (`./openapi` / `src/openapi.ts`)
 
 | Export                                                                      | Purpose                                                                            |
 | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `createTypedClient<Paths, Prefix, Field>(requestInstance, prefix?)`         | Type-safe client wrapping a `RequestInstance` (throws on error).                   |
-| `createFlatTypedClient<Paths, Prefix, Field>(flatRequestInstance, prefix?)` | Type-safe client wrapping a `FlatRequestInstance` (never throws).                  |
+| `toFlatTypedClient<Paths, Prefix, Field>(requestInstance, prefix?)`         | Type-safe **never-throwing** client wrapping a `RequestInstance`. Returns `{ data, error, response }`. Same signature as `createTypedClient`; uses `requestInstance.withResponse` + `try/catch` internally. |
 | `TypedClient`, `FlatTypedClient`, `SuccessResponse`, `ErrorResponse`, ...   | OpenAPI type helpers (paths, bodies, responses inferred from a generated `paths`). |
 
 ### Convenience methods
 
-`RequestInstance` / `FlatRequestInstance` expose `.get/.post/.put/.delete/.patch` and `.raw()`. `.state` exposes the `EnhancedState` (cache, loading, messages, ...). `.instance` exposes the underlying `FetchInstance` for advanced use.
+`RequestInstance` exposes `.get/.post/.put/.delete/.patch`, `.raw()`, and `.withResponse()`. `FlatRequestInstance` (obtained via `toFlatRequest`) exposes `.get/.post/.put/.delete/.patch` and `.raw()` — all never-throwing. `.state` exposes the `EnhancedState` (cache, loading, messages, ...). `.instance` exposes the underlying `FetchInstance` for advanced use.
+
+> **Design note:** `createFlatRequest` and `createFlatTypedClient` have been removed. The never-throwing variants are now produced by wrapping the throwing variants: `toFlatRequest(createRequest(...))` and `toFlatTypedClient(request, prefix)`. The throwing `RequestInstance` exposes `.withResponse(config) → { data, response }` so the flat wrapper can capture both the transformed data and the raw `FetchResponse` on the success path.
 
 ---
 
@@ -145,7 +147,7 @@ The main entry (`@soybeanjs/fetch`, source `src/index.ts`) exports the transport
    - `opts.isBackendSuccess(response)` → success
    - else: `opts.onBackendFail(response, instance)` — may return a new `FetchResponse` to retry (re-validated, but `onBackendFail` is **not** re-called to prevent loops)
    - else: throw `BackendError`
-5. `opts.onError(error)` on failure, then re-throw (or, for flat, capture into `{ data: null, error }`)
+5. `opts.onError(error)` on failure, then re-throw (or, for `toFlatRequest`, capture into `{ data: null, error }`)
 
 ### `fetchCore` pipeline (transport)
 
@@ -220,7 +222,7 @@ Each feature is opt-in via `FetchRequestConfig`:
 
 > **Separate build entry** — imported via `@soybeanjs/fetch/openapi`, not the main barrel. `src/openapi.ts` is listed in `vite.config.ts` `pack.entry` and exposed as the `./openapi` subpath in `package.json` `exports`. The `RequestInstance` / `FlatRequestInstance` it wraps come from the main entry (`@soybeanjs/fetch`).
 
-`createTypedClient<Paths, Prefix, Field>(requestInstance, prefix?)` wraps a `RequestInstance` and exposes typed HTTP verbs inferred from a generated `paths` type. `createFlatTypedClient` does the same for `FlatRequestInstance` (never-throws semantics).
+`createTypedClient<Paths, Prefix, Field>(requestInstance, prefix?)` wraps a `RequestInstance` and exposes typed HTTP verbs inferred from a generated `paths` type. `toFlatTypedClient<Paths, Prefix, Field>(requestInstance, prefix?)` is the never-throwing counterpart — same signature as `createTypedClient`, but each method resolves to `{ data, error, response }`. Internally it calls `requestInstance.withResponse(...)` + `try/catch`.
 
 The options use a **flattened API** — each OpenAPI parameter category is a top-level field, aligned with `FetchRequestConfig`:
 
@@ -279,6 +281,7 @@ client.get('/users/{id}', {
 - Adapter types (`FetchAdapterResponse`, `FetchAdapterInit`, `FetchAdapter`) live in `types.ts`. `defaultAdapter` and `createAdapterResponse` live in `adapter.ts`.
 - Core fetch logic delegates to the configured adapter — never call native `fetch` directly from `fetchCore`.
 - `fetchCore` is the **shared transport** for both `createFetchInstance` (business) and `createFetch` (`$fetch`).
+- **Never-throwing instances are wrappers, not constructors.** `toFlatRequest(createRequest(...))` and `toFlatTypedClient(request, prefix)` wrap a `RequestInstance`. They must reuse the underlying `instance` / `state` / cache — do not duplicate the business pipeline. The throwing `RequestInstance.withResponse(config)` is the only place that runs the post-`instance` transform/resolveRequestData step; the flat wrappers call it inside `try/catch`.
 
 ---
 
@@ -292,6 +295,7 @@ client.get('/users/{id}', {
 - **Cache key** defaults to `METHOD:url:query`. **Dedupe key** also includes `JSON.stringify(body)`. POST requests are deduped by body.
 - **`transform` has a default** (`response => response.data`) applied by `createDefaultOptions`; it can be omitted when creating a request instance.
 - **`mergeHeaders`** — later sources override earlier ones; `undefined` values in records are skipped.
+- **Flat instances share state with their throwing source.** `toFlatRequest(request)` reuses `request.state` / `request.instance` directly — cache, dedupe, loading, and auth state are shared, not duplicated.
 
 ---
 
@@ -307,3 +311,4 @@ client.get('/users/{id}', {
 | Change response parsing       | `fetch.ts` (`parseResponseBody`, `serializeBody`)                       |
 | Extend OpenAPI typing         | `openapi.ts`                                                            |
 | Add a new error code          | `error.ts` + `constant.ts` + the throw site in `fetch.ts`/`enhanced.ts` |
+| Change flat (never-throwing) behavior | `core.ts` (`toFlatRequest`) + `openapi.ts` (`toFlatTypedClient`) — both wrap `RequestInstance.withResponse` |

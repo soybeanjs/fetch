@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, expectTypeOf } from 'vitest';
 import type { paths } from '../examples/openapi';
-import { createRequest, createFlatRequest } from '../src/core';
-import { createTypedClient, createFlatTypedClient } from '../src/openapi';
+import { createRequest } from '../src/core';
+import { createTypedClient, toFlatTypedClient } from '../src/openapi';
 import type { FetchResponse } from '../src/types';
 import { setFetchResponse, getFetchCalls } from './helpers';
 
@@ -17,28 +17,18 @@ const METHODS = ['get', 'post', 'put', 'delete', 'patch', 'options', 'head', 'tr
  * `createTypedClient` calls `requestInstance(buildFetchConfig(...))` and returns
  * the resulting promise, so the mock resolves to the config it received — making
  * assertions on the built config straightforward.
+ *
+ * `toFlatTypedClient` calls `requestInstance.withResponse(...)` and `requestInstance.raw(...)`,
+ * so the mock also exposes those two methods.
  */
 function createMockRequest() {
   const mockRequest = vi.fn(async (config: any) => config) as any;
   mockRequest.raw = vi.fn(async (config: any) => config);
-  return mockRequest;
-}
-
-/**
- * Build a mock FlatRequestInstance that always resolves to a flat response shape.
- */
-function createMockFlatRequest() {
-  const flat = vi.fn(async (config: any) => ({
+  mockRequest.withResponse = vi.fn(async (config: any) => ({
     data: config,
-    error: null,
-    response: { status: 200, config }
-  })) as any;
-  flat.raw = vi.fn(async (config: any) => ({
-    data: config,
-    error: null,
     response: { status: 200, config }
   }));
-  return flat;
+  return mockRequest;
 }
 
 // ============================================================
@@ -233,26 +223,27 @@ describe('createTypedClient (integration with real createRequest)', () => {
 });
 
 // ============================================================
-//  createFlatTypedClient (unit — mock flat request instance)
+//  toFlatTypedClient (unit — mock request instance)
 // ============================================================
 
-describe('createFlatTypedClient', () => {
+describe('toFlatTypedClient', () => {
   it('exposes all HTTP methods as functions on both client and raw', () => {
-    const client = createFlatTypedClient(createMockFlatRequest(), '/api') as any;
+    const client = toFlatTypedClient(createMockRequest(), '/api') as any;
     for (const m of METHODS) {
       expect(typeof client[m]).toBe('function');
       expect(typeof client.raw[m]).toBe('function');
     }
   });
 
-  it('client.get calls flatRequestInstance and returns a flat { data, error, response }', async () => {
-    const mockFlat = createMockFlatRequest();
-    const client = createFlatTypedClient(mockFlat, '/api/v1') as any;
+  it('client.get calls requestInstance.withResponse and returns a flat { data, error, response }', async () => {
+    const mockRequest = createMockRequest();
+    const client = toFlatTypedClient(mockRequest, '/api/v1') as any;
 
     const result = await client.get('/users', { query: { page: 1 } });
 
-    expect(mockFlat).toHaveBeenCalledTimes(1);
-    const config = mockFlat.mock.calls[0][0];
+    expect(mockRequest.withResponse).toHaveBeenCalledTimes(1);
+    expect(mockRequest).not.toHaveBeenCalled();
+    const config = mockRequest.withResponse.mock.calls[0][0];
     expect(config.url).toBe('/api/v1/users');
     expect(config.method).toBe('get');
     expect(config.query).toEqual({ page: 1 });
@@ -263,15 +254,15 @@ describe('createFlatTypedClient', () => {
     expect(result.data).toBe(config);
   });
 
-  it('client.raw.get calls flatRequestInstance.raw', async () => {
-    const mockFlat = createMockFlatRequest();
-    const client = createFlatTypedClient(mockFlat, '/api') as any;
+  it('client.raw.get calls requestInstance.raw', async () => {
+    const mockRequest = createMockRequest();
+    const client = toFlatTypedClient(mockRequest, '/api') as any;
 
     const result = await client.raw.get('/users');
 
-    expect(mockFlat.raw).toHaveBeenCalledTimes(1);
-    expect(mockFlat).not.toHaveBeenCalled();
-    expect(mockFlat.raw.mock.calls[0][0].url).toBe('/api/users');
+    expect(mockRequest.raw).toHaveBeenCalledTimes(1);
+    expect(mockRequest.withResponse).not.toHaveBeenCalled();
+    expect(mockRequest.raw.mock.calls[0][0].url).toBe('/api/users');
 
     expect(result).toHaveProperty('data');
     expect(result).toHaveProperty('error', null);
@@ -279,11 +270,11 @@ describe('createFlatTypedClient', () => {
   });
 
   it('prepends the URL prefix and forwards method/body', async () => {
-    const mockFlat = createMockFlatRequest();
-    const client = createFlatTypedClient(mockFlat, '/base') as any;
+    const mockRequest = createMockRequest();
+    const client = toFlatTypedClient(mockRequest, '/base') as any;
 
     await client.post('/items', { body: { x: 1 } });
-    const config = mockFlat.mock.calls[0][0];
+    const config = mockRequest.withResponse.mock.calls[0][0];
     expect(config.url).toBe('/base/items');
     expect(config.method).toBe('post');
     expect(config.body).toEqual({ x: 1 });
@@ -291,21 +282,21 @@ describe('createFlatTypedClient', () => {
 });
 
 // ============================================================
-//  createFlatTypedClient (integration — real createFlatRequest + mocked fetch)
+//  toFlatTypedClient (integration — real createRequest + mocked fetch)
 // ============================================================
 
-describe('createFlatTypedClient (integration with real createFlatRequest)', () => {
+describe('toFlatTypedClient (integration with real createRequest)', () => {
   it('returns { data, error: null, response } on success', async () => {
     setFetchResponse({ status: 200, body: { ok: true } });
 
-    const flatRequest = createFlatRequest(
+    const request = createRequest(
       { baseURL: 'https://api.example.com' },
       {
         transform: (response: any) => response.data,
         isBackendSuccess: (response: any) => response.status >= 200 && response.status < 300
       }
     );
-    const client = createFlatTypedClient(flatRequest as any, '/api/v1') as any;
+    const client = toFlatTypedClient(request as any, '/api/v1') as any;
 
     const result = await client.get('/items');
 
@@ -319,14 +310,14 @@ describe('createFlatTypedClient (integration with real createFlatRequest)', () =
     // HTTP 200, but the backend envelope reports a business failure.
     setFetchResponse({ status: 200, body: { code: 500, msg: 'fail' } });
 
-    const flatRequest = createFlatRequest(
+    const request = createRequest(
       { baseURL: 'https://api.example.com' },
       {
         transform: (response: any) => response.data,
         isBackendSuccess: (response: any) => response.data?.code === 200
       }
     );
-    const client = createFlatTypedClient(flatRequest as any, '/api') as any;
+    const client = toFlatTypedClient(request as any, '/api') as any;
 
     const result = await client.get('/items');
 
@@ -338,14 +329,14 @@ describe('createFlatTypedClient (integration with real createFlatRequest)', () =
   it('returns { data: null, error } on HTTP error without throwing', async () => {
     setFetchResponse({ status: 500, body: { msg: 'server error' } });
 
-    const flatRequest = createFlatRequest(
+    const request = createRequest(
       { baseURL: 'https://api.example.com' },
       {
         transform: (response: any) => response.data,
         isBackendSuccess: (response: any) => response.status >= 200 && response.status < 300
       }
     );
-    const client = createFlatTypedClient(flatRequest as any, '/api') as any;
+    const client = toFlatTypedClient(request as any, '/api') as any;
 
     const result = await client.get('/items');
 
@@ -401,10 +392,10 @@ describe('createTypedClient — responseType type inference', () => {
   });
 });
 
-describe('createFlatTypedClient — responseType type inference', () => {
+describe('toFlatTypedClient — responseType type inference', () => {
   it("infers `string` for the flat `data` when responseType: 'text'", () => {
-    const flat = createFlatRequest();
-    const client = createFlatTypedClient<paths, '/api'>(flat, '/api');
+    const request = createRequest();
+    const client = toFlatTypedClient<paths, '/api'>(request, '/api');
 
     const res = client.get('/text', { responseType: 'text' });
     expectTypeOf(res).toMatchTypeOf<Promise<{ data: string; error: null } | { data: null; error: unknown }>>();

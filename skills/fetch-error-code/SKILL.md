@@ -122,12 +122,12 @@ try {
 }
 ```
 
-### With createFlatRequest (never throws)
+### With toFlatRequest (never throws)
 
 ```ts
-import { createFlatRequest } from '@soybeanjs/fetch';
+import { createRequest, toFlatRequest } from '@soybeanjs/fetch';
 
-const request = createFlatRequest(/* ... */);
+const request = toFlatRequest(createRequest(/* ... */));
 
 const { data, error, response } = await request.get('/users/1');
 if (error) {
@@ -197,4 +197,4 @@ err.name;         // 'FetchError' or 'BackendError'
 - Accessing `error.status` on a network error — it's `undefined` because there's no response. Always check `error.response` or `error.code` first.
 - Confusing `ERR_BAD_RESPONSE` (HTTP status failure) with `BACKEND_ERROR` (business logic failure). The former is thrown by `validateStatus` in `fetchCore`; the latter by `isBackendSuccess` in `processResponse`.
 - `BackendError extends FetchError` — `instanceof FetchError` is true for both. Check `instanceof BackendError` or `error.code === BACKEND_ERROR_FLAG` to distinguish.
-- For `createFlatRequest`, the error is captured into `{ data: null, error, response? }` — `onError` is still called before capturing.
+- For flat instances obtained via `toFlatRequest(request)`, the error is captured into `{ data: null, error, response? }` — `onError` is still called on the underlying `RequestInstance` before capturing.

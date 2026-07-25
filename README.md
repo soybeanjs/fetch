@@ -50,7 +50,7 @@ npx skills add soybeanjs/fetch
 | `fetch-transport-hook`   | 添加 ofetch 风格传输层钩子(`onRequest` / `onResponse` / `onRequestError` / `onResponseError`) | `fetch.ts` + `types.ts`             |
 | `fetch-enhanced-feature` | 添加增强功能(cache / dedupe / concurrency / debounce / throttle / auth / schema / loading)    | `enhanced.ts`                       |
 | `fetch-retry-timeout`    | 配置重试次数 / 延迟 / 条件、超时控制、自定义重试状态码                                        | `fetch.ts` + `options.ts`           |
-| `fetch-openapi-typing`   | 扩展 OpenAPI 类型安全客户端(`createTypedClient` / `createFlatTypedClient`)                    | `openapi.ts`                        |
+| `fetch-openapi-typing`   | 扩展 OpenAPI 类型安全客户端(`createTypedClient` / `toFlatTypedClient`)                      | `openapi.ts`                        |
 | `fetch-error-code`       | 添加自定义错误码、处理 `FetchError` / `BackendError` 错误模型                                 | `error.ts` + `constant.ts`          |
 | `fetch-test-writer`      | 按项目规范编写测试(vitest + 全局 fetch mock + 类型安全)                                       | `test/helpers.ts` + `test/setup.ts` |
 
@@ -130,14 +130,15 @@ const data = await request({
 });
 ```
 
-### 扁平化响应实例
+### 扁平化响应实例 (toFlatRequest)
 
-不抛出异常,通过返回值判断成功或失败:
+不抛出异常,通过返回值判断成功或失败。`toFlatRequest` 是一个包装器,它复用同一个 `RequestInstance` 的 `state` / `instance` / `cache`,不会重复创建请求流水线:
 
 ```typescript
-import { createFlatRequest } from '@soybeanjs/fetch';
+import { createRequest, toFlatRequest } from '@soybeanjs/fetch';
 
-const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, options);
+const request = createRequest({ baseURL: 'https://api.example.com' }, options);
+const flatRequest = toFlatRequest(request);
 
 const { data, error, response } = await flatRequest({
   url: '/users',
@@ -579,11 +580,11 @@ const fileResponse = await request.raw({
 // fileResponse.data 包含 { file, filename, contentType }
 ```
 
-> `createFlatRequest` 创建的扁平化实例同样提供 `flatRequest.raw()` 方法,语义一致,但不抛异常。
+> 通过 `toFlatRequest` 包装得到的扁平化实例同样提供 `flatRequest.raw()` 方法,语义一致,但不抛异常。
 
 ### 8. 便捷 HTTP 方法
 
-`RequestInstance` 和 `FlatRequestInstance` 都提供了常用 HTTP 动词的快捷方法:
+`RequestInstance`(由 `createRequest` 创建,并通过 `withResponse` 暴露)和通过 `toFlatRequest` 包装得到的 `FlatRequestInstance` 都提供了常用 HTTP 动词的快捷方法:
 
 ```typescript
 // GET 请求
@@ -705,19 +706,19 @@ const response = await client.raw.get('/menu/list', {
 });
 ```
 
-#### createFlatTypedClient
+#### toFlatTypedClient
 
-包装 `createFlatRequest` 创建的扁平化实例,**不抛出异常**:
+包装一个 `RequestInstance`,生成**不抛出异常**的类型安全客户端。与 `createTypedClient` 使用同一个请求实例(共享 `state`/`cache`/auth):
 
 ```typescript
-import { createFlatRequest } from '@soybeanjs/fetch';
-import { createFlatTypedClient } from '@soybeanjs/fetch/openapi';
+import { createRequest, toFlatRequest } from '@soybeanjs/fetch';
+import { createTypedClient, toFlatTypedClient } from '@soybeanjs/fetch/openapi';
 
-const flatRequest = createFlatRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
+const request = createRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
 
-const client = createFlatTypedClient<paths, '/api/v1', 'data'>(flatRequest, '/api/v1');
+const flatClient = toFlatTypedClient<paths, '/api/v1', 'data'>(request, '/api/v1');
 
-const { data, error } = await client.get('/menu/list', {
+const { data, error } = await flatClient.get('/menu/list', {
   query: { page: 1 }
 });
 
@@ -732,7 +733,7 @@ if (error) {
 
 原生 `fetch()` API **不支持上传进度事件**。本库通过 `onUploadProgress` 配置项弥补这一缺陷 —— 设置后库会自动为该请求切换到支持进度跟踪的适配器,无需手动管理适配器。
 
-适用于 `createRequest`、`createFlatRequest`、`$fetch` / `createFetch` 的所有 API,可在实例级或单次请求级使用。
+适用于 `createRequest`(包括经 `toFlatRequest` 包装得到的扁平化实例)、`$fetch` / `createFetch` 的所有 API,可在实例级或单次请求级使用。
 
 **跨运行时支持**:库根据运行时自动选择最佳方案:
 
@@ -799,11 +800,13 @@ await $fetch('/upload', {
 
 ```typescript
 import { ref } from 'vue';
-import { createFlatRequest } from '@soybeanjs/fetch';
+import { createRequest, toFlatRequest } from '@soybeanjs/fetch';
 
 const uploadProgress = ref(0);
 
-const request = createFlatRequest({ baseURL: 'https://api.example.com' }, {/* ... */});
+const request = toFlatRequest(
+  createRequest({ baseURL: 'https://api.example.com' }, {/* ... */})
+);
 
 async function handleUpload(file: File) {
   const formData = new FormData();
@@ -1363,18 +1366,29 @@ async function uploadFile(file: File) {
 function createRequest<ResponseData, ApiData>(
   config?: FetchRequestConfig,
   options?: RequestOption<ResponseData, ApiData>
-): RequestInstance<ApiData>;
+): RequestInstance<ResponseData, ApiData>;
 ```
 
-### createFlatRequest
+### toFlatRequest
 
-创建扁平化请求实例,不抛出异常。
+将 `createRequest` 创建的请求实例包装为扁平化请求实例,不抛出异常。扁平化实例复用原请求实例的 `state` / `instance` / 缓存与鉴权状态。
 
 ```typescript
-function createFlatRequest<ResponseData, ApiData>(
-  config?: FetchRequestConfig,
-  options?: RequestOption<ResponseData, ApiData>
+function toFlatRequest<ResponseData, ApiData>(
+  request: RequestInstance<ResponseData, ApiData>
 ): FlatRequestInstance<ResponseData, ApiData>;
+```
+
+### RequestInstance.withResponse
+
+发起请求并返回**转换后的数据 + 完整 FetchResponse**。仍然抛错,供 `toFlatRequest` 等包装器使用。
+
+```typescript
+interface RequestInstance<ResponseData = any, ApiData = ResponseData> {
+  withResponse<T = ApiData, R extends ResponseType = 'json'>(
+    config: FetchRequestConfig<R>
+  ): Promise<{ data: MappedType<R, T>; response: FetchResponse<ResponseData> }>;
+}
 ```
 
 ### createFetch / $fetch
@@ -1409,13 +1423,13 @@ function createTypedClient<Paths, Prefix = '', Field = ''>(
 ): TypedClient<Paths, Prefix, Field>;
 ```
 
-### createFlatTypedClient
+### toFlatTypedClient
 
-创建类型安全的扁平化客户端,不抛出异常。从 `@soybeanjs/fetch/openapi` 子路径导入。
+创建类型安全的扁平化客户端,不抛出异常。接受的是普通 `RequestInstance`(与 `createTypedClient` 相同),内部通过 `withResponse` + `try/catch` 实现扁平化返回。从 `@soybeanjs/fetch/openapi` 子路径导入。
 
 ```typescript
-function createFlatTypedClient<Paths, Prefix = '', Field = ''>(
-  flatRequestInstance: FlatRequestInstance<any, any, any>,
+function toFlatTypedClient<Paths, Prefix = '', Field = ''>(
+  requestInstance: RequestInstance<any, any>,
   prefix?: Prefix
 ): FlatTypedClient<Paths, Prefix, Field>;
 ```
@@ -1528,10 +1542,10 @@ interface UploadProgressEvent {
 6. `instance.request(config)` → `instance(config)`(无 `.request` 方法)
 7. 替换 `data` → `body`(请求体)、`params` → `query`(查询参数)
 
-### 为什么需要两种请求实例?
+### 为什么需要两种请求使用方式?
 
-- **createRequest**:适合大多数场景,请求失败会抛出异常,可使用 try-catch 捕获
-- **createFlatRequest**:适合需要统一处理成功和失败的场景,不会抛出异常,通过返回值判断
+- **直接调用 `request()` / `request.get()` 等**(抛出异常模式):适合大多数场景,请求失败会抛出异常,可使用 try-catch 捕获
+- **`toFlatRequest(request)` 包装后调用**(扁平化返回模式):适合需要统一处理成功和失败的场景,不会抛出异常,通过返回值 `{ data, error, response }` 判断
 
 ### 什么时候用 $fetch,什么时候用 createRequest?
 

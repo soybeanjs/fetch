@@ -782,14 +782,31 @@ export interface RequestInstanceCommon {
   instance: FetchInstance;
 }
 
-/** The request instance */
-export interface RequestInstance<ApiData = any> extends RequestInstanceCommon {
+/**
+ * The request instance.
+ *
+ * Carries two type parameters:
+ * - `ResponseData` — the raw parsed response body type (used by `raw` / `withResponse`)
+ * - `ApiData` — the transformed business data type returned by the main call
+ *
+ * `ResponseData` defaults to `any` so existing single-parameter usage
+ * (`RequestInstance<ApiData>`) remains valid.
+ */
+export interface RequestInstance<ResponseData = any, ApiData = ResponseData> extends RequestInstanceCommon {
   <T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     config: FetchRequestConfig<R>
   ): Promise<MappedType<R, T>>;
   raw<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     config: FetchRequestConfig<R>
   ): Promise<FetchResponse<MappedType<R, T>>>;
+  /**
+   * Perform a request and return **both** the transformed data and the raw
+   * {@link FetchResponse}. Still throws on error — useful for wrappers (such as
+   * {@link FlatRequestInstance}) that need access to the response object on success.
+   */
+  withResponse<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
+    config: FetchRequestConfig<R>
+  ): Promise<{ data: MappedType<R, T>; response: FetchResponse<ResponseData> }>;
   get<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     url: string,
     config?: SimpleMethodConfig<R>

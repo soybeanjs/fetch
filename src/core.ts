@@ -63,7 +63,7 @@ function getFileData(response: FetchResponse, getFileName?: (response: FetchResp
 /**
  * Create the common request infrastructure: fetch instance + resolved options + state.
  *
- * This is the internal foundation used by both {@link createRequest} and {@link createFlatRequest}.
+ * This is the internal foundation used by {@link createRequest}.
  */
 export function createCommonRequest<ResponseData = any, ApiData = ResponseData>(
   config?: CreateFetchDefaults,
@@ -90,6 +90,9 @@ export function createCommonRequest<ResponseData = any, ApiData = ResponseData>(
  * The returned function throws on error (both HTTP errors and backend errors).
  * On success, it returns the transformed business data directly.
  *
+ * To get a never-throwing instance that resolves to `{ data, error, response }`,
+ * wrap the returned instance with {@link toFlatRequest}.
+ *
  * @example
  * ```ts
  * const request = createRequest(
@@ -114,6 +117,13 @@ export function createCommonRequest<ResponseData = any, ApiData = ResponseData>(
  * // Get raw response (without transform)
  * const response = await request.raw({ url: '/users' });
  *
+ * // Get both data and response (still throws on error)
+ * const { data, response } = await request.withResponse({ url: '/users' });
+ *
+ * // Wrap into a never-throwing flat instance
+ * const flat = toFlatRequest(request);
+ * const { data, error } = await flat({ url: '/users' });
+ *
  * // Download file
  * const file = await request.get('/download', { responseType: 'blob' });
  * // file: { file: Blob, filename: string, contentType: string }
@@ -122,19 +132,31 @@ export function createCommonRequest<ResponseData = any, ApiData = ResponseData>(
 export function createRequest<ResponseData = any, ApiData = ResponseData>(
   config?: CreateFetchDefaults,
   options?: RequestOption<ResponseData, ApiData>
-): RequestInstance<ApiData> {
+): RequestInstance<ResponseData, ApiData> {
   const { instance, opts } = createCommonRequest<ResponseData, ApiData>(config, options);
 
-  const request = async function request<T extends ApiData = ApiData, R extends ResponseType = 'json'>(conf: any) {
+  /** Core post-processing: turn a FetchResponse into `{ data, response }`. Still throws. */
+  const withResponse = async function withResponse<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
+    conf: any
+  ): Promise<{ data: MappedType<R, T>; response: FetchResponse<ResponseData> }> {
     const response: FetchResponse<ResponseData> = await instance(conf);
     const responseType = getResponseType(response);
 
     if (responseType === 'json') {
-      return await opts.transform(response);
+      const data = (await opts.transform(response)) as MappedType<R, T>;
+      return { data, response };
     }
 
-    return resolveRequestData(response, responseType, conf.getFileName) as MappedType<R, T>;
-  } as RequestInstance<ApiData>;
+    const data = resolveRequestData(response, responseType, conf.getFileName) as MappedType<R, T>;
+    return { data, response };
+  };
+
+  const request = async function request<T extends ApiData = ApiData, R extends ResponseType = 'json'>(conf: any) {
+    const { data } = await withResponse<T, R>(conf);
+    return data;
+  } as RequestInstance<ResponseData, ApiData>;
+
+  request.withResponse = withResponse;
 
   request.raw = async function raw<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     conf: any
@@ -196,21 +218,26 @@ export function createRequest<ResponseData = any, ApiData = ResponseData>(
 }
 
 // ============================================================
-//  Create Flat Request (创建扁平化请求实例 — 不抛异常模式)
+//  To Flat Request (转换为扁平化请求实例 — 不抛异常模式)
 // ============================================================
 
 /**
- * Create a flat request instance that never throws.
+ * Wrap a {@link RequestInstance} (created by {@link createRequest}) into a
+ * {@link FlatRequestInstance} that **never throws**.
  *
- * 创建扁平化请求实例,不会抛出异常。
+ * 将 `createRequest` 返回的请求实例包装为永不抛异常的扁平化实例。
  *
  * The returned function always resolves to a `{ data, error, response }` object:
  * - On success: `{ data: ApiData, error: null, response: FetchResponse }`
  * - On failure: `{ data: null, error: FetchError, response?: FetchResponse }`
  *
+ * The underlying {@link RequestInstance} is reused — `state`, `instance`, `raw()`,
+ * and all convenience methods are wired through to the original instance, so cache,
+ * dedupe, loading state, etc. are shared.
+ *
  * @example
  * ```ts
- * const request = createFlatRequest(
+ * const request = createRequest(
  *   { baseURL: 'https://api.example.com' },
  *   {
  *     transform: (response) => response.data.data,
@@ -218,8 +245,10 @@ export function createRequest<ResponseData = any, ApiData = ResponseData>(
  *   }
  * );
  *
+ * const flat = toFlatRequest(request);
+ *
  * // Never throws — check `error` instead
- * const { data, error } = await request({ url: '/users' });
+ * const { data, error } = await flat({ url: '/users' });
  * if (error) {
  *   console.error(error.message);
  * } else {
@@ -227,25 +256,14 @@ export function createRequest<ResponseData = any, ApiData = ResponseData>(
  * }
  * ```
  */
-export function createFlatRequest<ResponseData = any, ApiData = ResponseData>(
-  config?: CreateFetchDefaults,
-  options?: RequestOption<ResponseData, ApiData>
+export function toFlatRequest<ResponseData = any, ApiData = ResponseData>(
+  request: RequestInstance<ResponseData, ApiData>
 ): FlatRequestInstance<ResponseData, ApiData> {
-  const { instance, opts } = createCommonRequest<ResponseData, ApiData>(config, options);
-
   const flatRequest = async function flatRequest<T extends ApiData = ApiData, R extends ResponseType = 'json'>(
     conf: any
   ) {
     try {
-      const response: FetchResponse<ResponseData> = await instance(conf);
-      const responseType = getResponseType(response);
-
-      if (responseType === 'json') {
-        const data = await opts.transform(response);
-        return { data, error: null, response } as FlatResponseData<ResponseData, MappedType<R, T>>;
-      }
-
-      const data = resolveRequestData(response, responseType, conf.getFileName);
+      const { data, response } = await request.withResponse<T, R>(conf);
       return { data, error: null, response } as FlatResponseData<ResponseData, MappedType<R, T>>;
     } catch (err) {
       const error = err as FetchError<ResponseData>;
@@ -264,16 +282,8 @@ export function createFlatRequest<ResponseData = any, ApiData = ResponseData>(
     | { data: null; error: FetchError<ResponseData>; response?: FetchResponse<ResponseData> }
   > {
     try {
-      const response: FetchResponse<ResponseData> = await instance(conf);
-      const responseType = getResponseType(response);
-
-      if (responseType !== 'json') {
-        const fileData = resolveRequestData(response, responseType, conf.getFileName);
-        (response as FetchResponse<MappedType<R, T>>).data = fileData;
-      }
-
-      const typed = response as FetchResponse<MappedType<R, T>>;
-      return { data: typed, error: null, response: typed };
+      const response = await request.raw<T, R>(conf);
+      return { data: response, error: null, response };
     } catch (err) {
       const error = err as FetchError<ResponseData>;
       return {
@@ -322,8 +332,8 @@ export function createFlatRequest<ResponseData = any, ApiData = ResponseData>(
     return flatRequest({ ...conf, url, method: 'PATCH', body });
   };
 
-  flatRequest.state = instance.enhancedState;
-  flatRequest.instance = instance;
+  flatRequest.state = request.state;
+  flatRequest.instance = request.instance;
 
   return flatRequest;
 }

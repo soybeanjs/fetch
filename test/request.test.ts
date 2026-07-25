@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createRequest, createFlatRequest } from '../src/core';
+import { createRequest, toFlatRequest } from '../src/core';
 import { BackendError, FetchError } from '../src/error';
 import { MessageStack } from '../src/message';
 import { setFetchResponse, setFetchImplementation, getFetchCallCount, getFetchCalls } from './helpers';
@@ -573,10 +573,10 @@ describe('createRequest', () => {
 });
 
 // ============================================================
-//  createFlatRequest
+//  toFlatRequest
 // ============================================================
 
-describe('createFlatRequest', () => {
+describe('toFlatRequest', () => {
   // ----------------------------------------------------------
   //  basic
   // ----------------------------------------------------------
@@ -587,12 +587,14 @@ describe('createFlatRequest', () => {
         body: { code: 200, data: { id: 1, name: 'John' }, message: 'ok' }
       });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        {
-          transform: response => response.data.data,
-          isBackendSuccess: response => response.data.code === 200
-        }
+      const request = toFlatRequest(
+        createRequest(
+          { baseURL: 'https://api.example.com' },
+          {
+            transform: response => response.data.data,
+            isBackendSuccess: response => response.data.code === 200
+          }
+        )
       );
 
       const result = await request({ url: '/users/1' });
@@ -605,7 +607,9 @@ describe('createFlatRequest', () => {
     it('Returns { data: null, error, response? } on failure', async () => {
       setFetchResponse({ status: 500, body: 'Internal Server Error' });
 
-      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
+      const request = toFlatRequest(
+        createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true })
+      );
 
       const result = await request({ url: '/test' });
       expect(result.data).toBeNull();
@@ -619,7 +623,9 @@ describe('createFlatRequest', () => {
         throw new Error('Network failed');
       });
 
-      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
+      const request = toFlatRequest(
+        createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true })
+      );
 
       const result = await request({ url: '/test' });
       expect(result.data).toBeNull();
@@ -633,12 +639,14 @@ describe('createFlatRequest', () => {
         body: { code: 200, data: { id: 1, name: 'John' }, message: 'ok' }
       });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        {
-          transform: response => response.data.data,
-          isBackendSuccess: response => response.data.code === 200
-        }
+      const request = toFlatRequest(
+        createRequest(
+          { baseURL: 'https://api.example.com' },
+          {
+            transform: response => response.data.data,
+            isBackendSuccess: response => response.data.code === 200
+          }
+        )
       );
 
       const result = await request({ url: '/users/1' });
@@ -648,7 +656,9 @@ describe('createFlatRequest', () => {
     it('Default transform is `response => response.data`', async () => {
       setFetchResponse({ status: 200, body: { hello: 'world' } });
 
-      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
+      const request = toFlatRequest(
+        createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true })
+      );
 
       const result = await request({ url: '/test' });
       expect(result.data).toEqual({ hello: 'world' });
@@ -666,9 +676,11 @@ describe('createFlatRequest', () => {
         body: { code: 401, message: 'Unauthorized' }
       });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: response => response.data.code === 200 }
+      const request = toFlatRequest(
+        createRequest(
+          { baseURL: 'https://api.example.com' },
+          { isBackendSuccess: response => response.data.code === 200 }
+        )
       );
 
       const result = await request({ url: '/test' });
@@ -682,9 +694,11 @@ describe('createFlatRequest', () => {
         body: { code: 401, message: 'Unauthorized' }
       });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        { isBackendSuccess: response => response.data.code === 200 }
+      const request = toFlatRequest(
+        createRequest(
+          { baseURL: 'https://api.example.com' },
+          { isBackendSuccess: response => response.data.code === 200 }
+        )
       );
 
       const result = await request({ url: '/test' });
@@ -699,7 +713,9 @@ describe('createFlatRequest', () => {
     it('.get() works like createRequest but returns flat response', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
+      const request = toFlatRequest(
+        createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true })
+      );
 
       const result = await request.get('/users');
       expect(result.data).toEqual({ ok: true });
@@ -710,7 +726,9 @@ describe('createFlatRequest', () => {
     it('.post() works like createRequest but returns flat response', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
+      const request = toFlatRequest(
+        createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true })
+      );
 
       const result = await request.post('/users', { name: 'John' });
       expect(result.data).toEqual({ ok: true });
@@ -720,7 +738,9 @@ describe('createFlatRequest', () => {
     it('.put() works like createRequest but returns flat response', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
+      const request = toFlatRequest(
+        createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true })
+      );
 
       const result = await request.put('/users/1', { name: 'John' });
       expect(result.data).toEqual({ ok: true });
@@ -730,7 +750,9 @@ describe('createFlatRequest', () => {
     it('.delete() works like createRequest but returns flat response', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
+      const request = toFlatRequest(
+        createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true })
+      );
 
       const result = await request.delete('/users/1');
       expect(result.data).toEqual({ ok: true });
@@ -740,7 +762,9 @@ describe('createFlatRequest', () => {
     it('.patch() works like createRequest but returns flat response', async () => {
       setFetchResponse({ status: 200, body: { ok: true } });
 
-      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
+      const request = toFlatRequest(
+        createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true })
+      );
 
       const result = await request.patch('/users/1', { name: 'John' });
       expect(result.data).toEqual({ ok: true });
@@ -758,12 +782,14 @@ describe('createFlatRequest', () => {
         body: { code: 200, data: { id: 1 }, message: 'ok' }
       });
 
-      const request = createFlatRequest(
-        { baseURL: 'https://api.example.com' },
-        {
-          transform: response => response.data.data,
-          isBackendSuccess: response => response.data.code === 200
-        }
+      const request = toFlatRequest(
+        createRequest(
+          { baseURL: 'https://api.example.com' },
+          {
+            transform: response => response.data.data,
+            isBackendSuccess: response => response.data.code === 200
+          }
+        )
       );
 
       const result = await request.raw({ url: '/test' });
@@ -779,7 +805,9 @@ describe('createFlatRequest', () => {
     it('Returns error on failure', async () => {
       setFetchResponse({ status: 500, body: 'Internal Server Error' });
 
-      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
+      const request = toFlatRequest(
+        createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true })
+      );
 
       const result = await request.raw({ url: '/test' });
       expect(result.data).toBeNull();
@@ -792,7 +820,9 @@ describe('createFlatRequest', () => {
   // ----------------------------------------------------------
   describe('.state', () => {
     it('Same as createRequest.state — EnhancedState with all fields', () => {
-      const request = createFlatRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true });
+      const request = toFlatRequest(
+        createRequest({ baseURL: 'https://api.example.com' }, { isBackendSuccess: () => true })
+      );
       expect(request.state.cache).toBeInstanceOf(Map);
       expect(request.state.loading).toHaveProperty('count');
       expect(request.state.loading).toHaveProperty('entries');
