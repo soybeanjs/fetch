@@ -52,7 +52,7 @@
     "upkg": "soy ncu"
   },
   "devDependencies": {
-    "@soybeanjs/cli": "^1.7.2",
+    "@soybeanjs/cli": "^1.7.4",
     "@soybeanjs/oxc-config": "^0.2.3",
     "@types/node": "^26.1.1",
     "typescript": "^7.0.2",

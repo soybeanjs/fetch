@@ -6,7 +6,5 @@ catalog:
 overrides:
   vite: 'catalog:'
 shamefullyHoist: true
-ignoreWorkspaceRootCheck: true
-linkWorkspacePackages: true
-allowBuilds:
 minimumReleaseAgeExclude:
+  - '@soybeanjs/cli@1.7.3 || 1.7.4'
