@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.1.0](https://github.com/soybeanjs/fetch/compare/v0.0.5...v0.1.0) (2026-07-26)
+
+### &nbsp;&nbsp;&nbsp;🚀 Features
+
+- **examples**: add auto-generated OpenAPI type example file &nbsp;-&nbsp; by @soybeanjs [<samp>(df341)</samp>](https://github.com/soybeanjs/fetch/commit/df341ac)
+
+### &nbsp;&nbsp;&nbsp;💅 Refactors
+
+- **core**: replace createFlatRequest/createFlatTypedClient with toFlatRequest/toFlatTypedClient wrappers &nbsp;-&nbsp; by @soybeanjs [<samp>(67910)</samp>](https://github.com/soybeanjs/fetch/commit/67910c2)
+
+### &nbsp;&nbsp;&nbsp;🏡 Chore
+
+- **deps**:
+  - update deps &nbsp;-&nbsp; by @soybeanjs [<samp>(4bcd1)</samp>](https://github.com/soybeanjs/fetch/commit/4bcd1be)
+  - update deps &nbsp;-&nbsp; by @soybeanjs [<samp>(09f9c)</samp>](https://github.com/soybeanjs/fetch/commit/09f9c62)
+
+### &nbsp;&nbsp;&nbsp;❤️ Contributors
+
+[![soybeanjs](https://github.com/soybeanjs.png?size=48)](https://github.com/soybeanjs)&nbsp;&nbsp;
+
 ## [v0.0.5](https://github.com/soybeanjs/fetch/compare/v0.0.4...v0.0.5) (2026-07-23)
 
 ### &nbsp;&nbsp;&nbsp;🚀 Features
