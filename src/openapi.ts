@@ -133,14 +133,28 @@ export type ExtractFirstError<R> =
 /** Extract the full parameters object from an operation. */
 export type OperationParams<T> = T extends { parameters: infer P } ? P : Record<string, never>;
 
-/** Extract the query parameters type from an operation. */
-export type OperationQueryParams<T> = T extends { parameters: { query: infer Q } } ? NonNullable<Q> : never;
+/**
+ * Extract the query parameters type from an operation.
+ *
+ * The `query` key is matched **optionally** (`query?`) on purpose: codegen tools
+ * such as `openapi-typescript` emit `query?: { ... }` whenever every declared query
+ * parameter is optional, and only emit a required `query: { ... }` when at least one
+ * parameter is required. Matching only the required form silently degrades the whole
+ * query typing to `never` (and then to an untyped passthrough `Record<string, any>`)
+ * for the common all-optional case.
+ *
+ * 以 **可选**（`query?`）形式匹配：当接口的查询参数全部可选时，
+ * `openapi-typescript` 等生成器会输出 `query?: { ... }`，只有存在必填参数时才输出
+ * `query: { ... }`。只匹配必填形式会让「全可选」这一常见情形静默退化成 `never`
+ * （进而落到无类型的 `Record<string, any>` 透传）。
+ */
+export type OperationQueryParams<T> = T extends { parameters: { query?: infer Q } } ? NonNullable<Q> : never;
 
 /** Extract the path parameters type from an operation. */
-export type OperationPathParams<T> = T extends { parameters: { path: infer P } } ? NonNullable<P> : never;
+export type OperationPathParams<T> = T extends { parameters: { path?: infer P } } ? NonNullable<P> : never;
 
 /** Extract the header parameters type from an operation. */
-export type OperationHeaderParams<T> = T extends { parameters: { header: infer H } } ? NonNullable<H> : never;
+export type OperationHeaderParams<T> = T extends { parameters: { header?: infer H } } ? NonNullable<H> : never;
 
 /** `pathParams` — required when the operation has path params (URL placeholders must be filled). */
 export type PathParamsOption<T> = OperationPathParams<T> extends never ? {} : { pathParams: OperationPathParams<T> };

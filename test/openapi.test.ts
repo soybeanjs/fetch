@@ -2,6 +2,7 @@ import { describe, it, expect, vi, expectTypeOf } from 'vitest';
 import type { paths } from '../examples/openapi';
 import { createRequest } from '../src/core';
 import { createTypedClient, toFlatTypedClient } from '../src/openapi';
+import type { HeaderParamsOption, PathParamsOption, QueryParamsOption } from '../src/openapi';
 import type { FetchResponse } from '../src/types';
 import { setFetchResponse, getFetchCalls } from './helpers';
 
@@ -399,5 +400,61 @@ describe('toFlatTypedClient — responseType type inference', () => {
 
     const res = client.get('/text', { responseType: 'text' });
     expectTypeOf(res).toMatchTypeOf<Promise<{ data: string; error: null } | { data: null; error: unknown }>>();
+  });
+});
+
+// ============================================================
+//  Type-level tests (parameter option inference — optional vs required)
+// ============================================================
+
+/**
+ * `openapi-typescript` emits `query?: { ... }` when every declared query parameter
+ * is optional, and only emits a required `query: { ... }` when at least one is
+ * required. The extractors must therefore match the **optional** form; matching
+ * only the required form degrades the whole query typing to `never` for the
+ * common all-optional case.
+ *
+ * These tests pin the optional/required/never matrix for `query`, `headers`, and
+ * `pathParams`, so a regression surfaces as a typecheck failure.
+ */
+describe('createTypedClient — parameter option inference', () => {
+  /** A shape with every query param optional — the common ubean / openapi-typescript output. */
+  type AllOptionalQuery = { parameters: { query?: { a?: string; b?: number } | undefined } };
+  /** A shape with at least one required query param — `query` becomes non-optional. */
+  type OneRequiredQuery = { parameters: { query: { a: string; b?: number } } };
+  /** No query params at all — codegen emits `query?: never`. */
+  type NoQuery = { parameters: { query?: never } };
+  type WithHeader = { parameters: { header?: { 'x-trace'?: string } | undefined } };
+
+  it('types `query` for an all-optional query object', () => {
+    expectTypeOf<QueryParamsOption<AllOptionalQuery>>().toEqualTypeOf<{ query?: { a?: string; b?: number } }>();
+  });
+
+  it('types `query` for a query object with required params', () => {
+    expectTypeOf<QueryParamsOption<OneRequiredQuery>>().toEqualTypeOf<{ query?: { a: string; b?: number } }>();
+  });
+
+  it('omits `query` when the operation declares `query?: never`', () => {
+    expectTypeOf<QueryParamsOption<NoQuery>>().toEqualTypeOf<{}>();
+  });
+
+  it('rejects unknown query fields', () => {
+    // @ts-expect-error `nope` is not part of the operation query
+    const invalid: QueryParamsOption<AllOptionalQuery> = { query: { nope: 1 } };
+    expect(invalid).toBeDefined();
+  });
+
+  it('types `headers` when header params are declared', () => {
+    expectTypeOf<HeaderParamsOption<WithHeader>>().toEqualTypeOf<{ headers?: { 'x-trace'?: string } }>();
+  });
+
+  it('omits `headers` when the operation declares `header?: never`', () => {
+    expectTypeOf<HeaderParamsOption<NoQuery>>().toEqualTypeOf<{}>();
+  });
+
+  it('keeps `pathParams` required and typed from the spec', () => {
+    expectTypeOf<PathParamsOption<{ parameters: { path: { id: string } } }>>().toEqualTypeOf<{
+      pathParams: { id: string };
+    }>();
   });
 });
