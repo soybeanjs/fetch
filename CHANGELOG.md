@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.1.1](https://github.com/soybeanjs/fetch/compare/v0.1.0...v0.1.1) (2026-10-11)
+
+### &nbsp;&nbsp;&nbsp;🐞 Bug Fixes
+
+- **openapi**: match optional query/header/path parameter keys &nbsp;-&nbsp; by @soybeanjs [<samp>(b7d5f)</samp>](https://github.com/soybeanjs/fetch/commit/b7d5fc0)
+
+### &nbsp;&nbsp;&nbsp;🏡 Chore
+
+- **deps**: update deps &nbsp;-&nbsp; by @soybeanjs [<samp>(2aaf6)</samp>](https://github.com/soybeanjs/fetch/commit/2aaf676)
+
+### &nbsp;&nbsp;&nbsp;❤️ Contributors
+
+[![soybeanjs](https://github.com/soybeanjs.png?size=48)](https://github.com/soybeanjs)&nbsp;&nbsp;
+
 ## [v0.1.0](https://github.com/soybeanjs/fetch/compare/v0.0.5...v0.1.0) (2026-07-26)
 
 ### &nbsp;&nbsp;&nbsp;🚀 Features
