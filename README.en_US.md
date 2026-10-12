@@ -152,6 +152,31 @@ if (error) {
 }
 ```
 
+### Request Instance Factory (createRequestFactory)
+
+When the business options (`transform` / `isBackendSuccess` / `onError`, ...) are identical but you need several transport configs (e.g. different `baseURL`), reuse them through a factory:
+
+```typescript
+import { createRequestFactory } from '@soybeanjs/fetch';
+
+const createApi = createRequestFactory({
+  transform: response => response.data.data,
+  isBackendSuccess: response => response.data.code === 200
+});
+
+const userApi = createApi({ baseURL: 'https://user.example.com' });
+const orderApi = createApi({ baseURL: 'https://order.example.com' });
+
+const user = await userApi.get('/users/1');
+const order = await orderApi.get('/orders/1');
+```
+
+`config` may be omitted (`createApi()`), which behaves like `createRequest(undefined, options)`.
+
+> ⚠️ Every factory call creates a **fresh instance** — `state` / cache / dedupe / loading / auth are fully independent.
+> Do not share state to save memory: the default cache key is `METHOD:url:query` and does **not** include `baseURL`,
+> so sharing state would let the same path on different hosts hit each other's cache entries.
+
 ### $fetch — Lightweight Fetch Client (ofetch-compatible)
 
 No business logic needed — make requests directly:

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createRequest, toFlatRequest } from '../src/core';
+import { createRequest, createRequestFactory, toFlatRequest } from '../src/core';
 import { BackendError, FetchError } from '../src/error';
 import { MessageStack } from '../src/message';
 import { setFetchResponse, setFetchImplementation, getFetchCallCount, getFetchCalls } from './helpers';
@@ -882,5 +882,84 @@ describe('File download', () => {
       getFileName: () => 'custom-name.txt'
     });
     expect(result.filename).toBe('custom-name.txt');
+  });
+});
+
+// ============================================================
+//  createRequestFactory
+// ============================================================
+
+describe('createRequestFactory', () => {
+  it('Reuses the same business options across different baseURLs', async () => {
+    setFetchResponse({
+      status: 200,
+      body: { code: 200, data: { id: 1 }, message: 'ok' }
+    });
+
+    const createApi = createRequestFactory({
+      transform: response => response.data.data,
+      isBackendSuccess: response => response.data.code === 200
+    });
+
+    const userApi = createApi({ baseURL: 'https://user.example.com' });
+    const orderApi = createApi({ baseURL: 'https://order.example.com' });
+
+    expect(await userApi.get('/users/1')).toEqual({ id: 1 });
+    expect(await orderApi.get('/orders/1')).toEqual({ id: 1 });
+
+    const calls = getFetchCalls();
+    expect(calls[0].url).toBe('https://user.example.com/users/1');
+    expect(calls[1].url).toBe('https://order.example.com/orders/1');
+  });
+
+  it('Creates an instance even when config is omitted', async () => {
+    setFetchResponse({ status: 200, body: { hello: 'world' } });
+
+    const createApi = createRequestFactory({ isBackendSuccess: () => true });
+    const request = createApi();
+
+    expect(await request.get('/test')).toEqual({ hello: 'world' });
+    expect(getFetchCalls()[0].url).toBe('/test');
+  });
+
+  it('Each instance owns an isolated state (no cache/loading leakage)', async () => {
+    setFetchResponse({ status: 200, body: { ok: true } });
+
+    const createApi = createRequestFactory({ isBackendSuccess: () => true });
+    const a = createApi({ baseURL: 'https://a.example.com' });
+    const b = createApi({ baseURL: 'https://b.example.com' });
+
+    expect(a.state).not.toBe(b.state);
+    expect(a.instance).not.toBe(b.instance);
+
+    await a.get('/same-path');
+    await b.get('/same-path');
+
+    // Same path+query would collide if state were shared — both requests must hit the network
+    expect(getFetchCallCount()).toBe(2);
+  });
+
+  it('Forwards per-instance config overrides to the shared options', async () => {
+    setFetchResponse({ status: 200, body: { ok: true } });
+
+    const seen: string[] = [];
+    const createApi = createRequestFactory({
+      isBackendSuccess: () => true,
+      onRequest: config => {
+        seen.push(config.headers.get('x-app') || '');
+        config.headers.set('x-app', `${config.headers.get('x-app')}-touched`);
+        return config;
+      }
+    });
+
+    const a = createApi({ baseURL: 'https://a.example.com', headers: { 'x-app': 'a' } });
+    const b = createApi({ baseURL: 'https://b.example.com', headers: { 'x-app': 'b' } });
+
+    await a.get('/x');
+    await b.get('/x');
+
+    expect(seen).toEqual(['a', 'b']);
+    const headers = getFetchCalls().map(call => new Headers(call.init?.headers).get('x-app'));
+    expect(headers).toEqual(['a-touched', 'b-touched']);
   });
 });

@@ -79,6 +79,48 @@ export function createCommonRequest<ResponseData = any, ApiData = ResponseData>(
 }
 
 // ============================================================
+//  Create Request Factory (创建请求实例工厂 — 复用业务配置)
+// ============================================================
+
+/**
+ * Create a factory that reuses the same {@link RequestOption} (business hooks)
+ * across multiple request instances with different transport configs.
+ *
+ * 创建一个复用同一份业务配置(`RequestOption`)、但可为不同 `config`(如不同 `baseURL`)
+ * 生成独立请求实例的工厂函数。
+ *
+ * Each call of the returned factory creates a **fresh** instance — its own
+ * `instance` / `state` / cache / dedupe / loading — so instances never share
+ * mutable runtime state (important: the default cache key does not include
+ * `baseURL`, so sharing state across different `baseURL`s would leak cache
+ * entries across hosts).
+ *
+ * Use the factory when the business layer (transform / isBackendSuccess /
+ * onError / ...) is identical but the transport layer differs. When both are
+ * identical, just call {@link createRequest} once and reuse the instance.
+ *
+ * @example
+ * ```ts
+ * const createApi = createRequestFactory({
+ *   transform: (response) => response.data.data,
+ *   isBackendSuccess: (response) => response.data.code === 200
+ * });
+ *
+ * const userApi = createApi({ baseURL: 'https://user.example.com' });
+ * const orderApi = createApi({ baseURL: 'https://order.example.com' });
+ *
+ * // Each instance keeps its own cache / loading / dedupe state
+ * const user = await userApi.get('/users/1');
+ * const order = await orderApi.get('/orders/1');
+ * ```
+ */
+export function createRequestFactory<ResponseData = any, ApiData = ResponseData>(
+  options?: RequestOption<ResponseData, ApiData>
+): (config?: CreateFetchDefaults) => RequestInstance<ResponseData, ApiData> {
+  return (config?: CreateFetchDefaults) => createRequest<ResponseData, ApiData>(config, options);
+}
+
+// ============================================================
 //  Create Request (创建请求实例 — 抛出异常模式)
 // ============================================================
 

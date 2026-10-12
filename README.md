@@ -152,6 +152,31 @@ if (error) {
 }
 ```
 
+### 请求实例工厂 (createRequestFactory)
+
+当业务配置(`transform` / `isBackendSuccess` / `onError` 等)相同、但传输配置(如 `baseURL`)需要多套时,用工厂复用业务配置:
+
+```typescript
+import { createRequestFactory } from '@soybeanjs/fetch';
+
+const createApi = createRequestFactory({
+  transform: response => response.data.data,
+  isBackendSuccess: response => response.data.code === 200
+});
+
+const userApi = createApi({ baseURL: 'https://user.example.com' });
+const orderApi = createApi({ baseURL: 'https://order.example.com' });
+
+const user = await userApi.get('/users/1');
+const order = await orderApi.get('/orders/1');
+```
+
+`config` 可省略(`createApi()`),此时行为等同于 `createRequest(undefined, options)`。
+
+> ⚠️ 工厂每次调用都会创建**全新实例**,`state` / cache / dedupe / loading / auth 互相独立。
+> 不要为了省内存去共享 state —— 默认缓存 key 是 `METHOD:url:query`,**不含 `baseURL`**,
+> 一旦共享,不同 host 的同名路径会互相命中缓存。
+
 ### $fetch — 轻量 fetch 客户端(兼容 ofetch)
 
 无需业务逻辑,直接发起请求:

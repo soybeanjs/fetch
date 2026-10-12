@@ -87,6 +87,7 @@ The main entry (`@soybeanjs/fetch`, source `src/index.ts`) exports the transport
 | Export                                                                    | Purpose                                                                            |
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `createRequest(config?, options?)`                                        | Business request instance — **throws** on error; returns transformed `ApiData`.    |
+| `createRequestFactory(options?)`                                          | Curry a shared `RequestOption` into `(config?) => RequestInstance` — reuse business hooks across several transport configs (e.g. different `baseURL`). Each call returns a fresh instance with its own `state`/cache. |
 | `toFlatRequest(request)`                                                  | Wraps a `RequestInstance` into a `FlatRequestInstance` — **never throws**; returns `{ data, error, response }`. Shares the underlying `instance` / `state` / cache with the original. |
 | `$fetch` / `createFetch(defaults?)`                                       | ofetch-compatible transport client. `.raw()`, `.native`, `.create()`.              |
 | `fetchCore(config)`                                                       | Low-level transport (rarely called directly).                                      |
@@ -98,6 +99,8 @@ The main entry (`@soybeanjs/fetch`, source `src/index.ts`) exports the transport
 | `export type * from './types'` + `'./standard-schema'`                    | All public types (config, response, errors, Standard Schema spec types).           |
 
 > `createCommonRequest` (the internal foundation used by `createRequest`) and the option builders (`createDefaultOptions`, `createFetchConfig`, `createRetryOptions`) are **not** re-exported from the barrel — they are internal to `src/core.ts` / `src/options.ts`. Tests import them directly from the source modules.
+
+> `createRequestFactory(options)` = `(config?) => createRequest(config, options)`. It exists to reuse business hooks across transport configs. Never make it share the underlying `enhancedState` across `baseURL`s — the default cache key (`METHOD:url:query`, `src/enhanced.ts:79`) omits `baseURL`, so shared state would leak cache entries across hosts.
 
 ### OpenAPI subpath (`./openapi` / `src/openapi.ts`)
 
