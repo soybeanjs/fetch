@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.1.2](https://github.com/soybeanjs/fetch/compare/v0.1.1...v0.1.2) (2026-10-13)
+
+### &nbsp;&nbsp;&nbsp;🚀 Features
+
+- **core**: add createRequestFactory for reusing business options &nbsp;-&nbsp; by @soybeanjs [<samp>(b7630)</samp>](https://github.com/soybeanjs/fetch/commit/b763035)
+
+### &nbsp;&nbsp;&nbsp;❤️ Contributors
+
+[![soybeanjs](https://github.com/soybeanjs.png?size=48)](https://github.com/soybeanjs)&nbsp;&nbsp;
+
 ## [v0.1.1](https://github.com/soybeanjs/fetch/compare/v0.1.0...v0.1.1) (2026-10-11)
 
 ### &nbsp;&nbsp;&nbsp;🐞 Bug Fixes
